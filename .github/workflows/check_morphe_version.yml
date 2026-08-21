@@ -1,0 +1,91 @@
+name: Check Morphe Max Supported YouTube Version
+
+on:
+  schedule:
+    - cron: '0 15 * * *' # Chạy tự động hàng ngày lúc 00:00 UTC
+  workflow_dispatch: # Cho phép nhấn nút chạy thủ công
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Extract Max YouTube Versions from Main and Dev Branches
+        run: |
+          python3 -c "
+          import urllib.request
+          import re
+
+          def get_max_yt_version(branch_name):
+              url = f'https://raw.githubusercontent.com/MorpheApp/morphe-patches/{branch_name}/README.md'
+              try:
+                  req = urllib.request.urlopen(url)
+                  readme_text = req.read().decode('utf-8')
+              except Exception as e:
+                  print(f'Lỗi khi tải README nhánh {branch_name}: {e}')
+                  return None
+
+              # Tìm vị trí phần Patches list
+              patches_list_match = re.search(r'#+\s*🩹?\s*Patches\s+list', readme_text, re.IGNORECASE)
+              content_to_search = readme_text[patches_list_match.start():] if patches_list_match else readme_text
+
+              # Tách khối thông tin liên quan tới YouTube
+              yt_block_match = re.search(r'(?i)(?:###?\s*YouTube|com\.google\.android\.youtube)(.*?)(?:\n#+|\Z)', content_to_search, re.DOTALL)
+              yt_text = yt_block_match.group(1) if yt_block_match else content_to_search
+
+              # Tìm các chuỗi version dạng X.XX.XX
+              versions = set(re.findall(r'\b\d+\.\d+\.\d+(?:\.\d+)?\b', yt_text))
+
+              def parse_ver(v):
+                  return [int(x) for x in re.findall(r'\d+', v)]
+
+              # Lọc bỏ số năm phiên bản bộ patch (ví dụ: 2024.x, 2025.x, 2026.x)
+              valid_versions = [v for v in versions if not v.startswith('202')]
+
+              if valid_versions:
+                  return sorted(valid_versions, key=parse_ver)[-1]
+                  
+              return None
+
+          # Lấy version cho nhánh main
+          ver_main = get_max_yt_version('main')
+          if ver_main:
+              print(f'==> Max YouTube version (main): {ver_main}')
+              with open('version.txt', 'w') as out:
+                  out.write(ver_main)
+          else:
+              print('Error: Không tìm thấy version YouTube trên nhánh main!')
+              exit(1)
+
+          # Lấy version cho nhánh dev
+          ver_dev = get_max_yt_version('dev')
+          if ver_dev:
+              print(f'==> Max YouTube version (dev): {ver_dev}')
+              with open('version_dev.txt', 'w') as out:
+                  out.write(ver_dev)
+          else:
+              print('Error: Không tìm thấy version YouTube trên nhánh dev!')
+              exit(1)
+          "
+
+      - name: Commit and Push if updated
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add version.txt version_dev.txt
+          
+          if git diff --cached --quiet; then
+            echo "Không có thay đổi về version."
+          else
+            VER_MAIN=$(cat version.txt)
+            VER_DEV=$(cat version_dev.txt)
+            git commit -m "build: update YouTube versions (main: $VER_MAIN, dev: $VER_DEV) "
+            git push
+          fi
