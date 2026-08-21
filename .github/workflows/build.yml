@@ -1,0 +1,384 @@
+name: Check & Auto Build Root Mount YouTube (j-hc Full Standard)
+
+on:
+  schedule:
+    - cron: '0 16 * * *'
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: 'Ép Build thủ công (bỏ qua kiểm tra Patch)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  check-updates:
+    name: Check for New Morphe Patches
+    runs-on: ubuntu-latest
+    outputs:
+      has_new_stable: ${{ steps.check_patches.outputs.has_new_stable }}
+      has_new_dev: ${{ steps.check_patches.outputs.has_new_dev }}
+      latest_stable_tag: ${{ steps.check_patches.outputs.latest_stable_tag }}
+      latest_dev_tag: ${{ steps.check_patches.outputs.latest_dev_tag }}
+      should_build: ${{ steps.check_patches.outputs.should_build }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4.3.0
+
+      - name: Check Latest Patch Against Existing Releases
+        id: check_patches
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FORCE_BUILD: ${{ inputs.force_build }}
+        run: bash .github/scripts/check_patches.sh
+
+  download-stable-apk:
+    name: Download Stable APK
+    needs: check-updates
+    if: ${{ needs.check-updates.outputs.has_new_stable == 'true' || inputs.force_build == true }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4.3.0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5.6.0
+        with:
+          python-version: '3.10'
+
+      - name: Cache Playwright Chromium
+        id: cache-playwright
+        uses: actions/cache@v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-chromium-headless
+
+      - name: Install Playwright & Headless Chromium
+        run: |
+          pip install playwright
+          if [ "${{ steps.cache-playwright.outputs.cache-hit }}" != 'true' ]; then
+            playwright install chromium-headless-shell
+          fi
+
+      - name: Download Stable APK via Playwright
+        run: |
+          VERSION=$(cat version.txt | tr -d '\r\n' | sed 's/^[vV]//' | xargs)
+          python .github/scripts/download_apk.py "$VERSION" "youtube_stable.apk"
+
+      - name: Upload Stable APK Artifact
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: stable-apk-file
+          path: youtube_stable.apk
+          retention-days: 1
+
+  download-dev-apk:
+    name: Download Dev APK
+    needs: check-updates
+    if: ${{ needs.check-updates.outputs.has_new_dev == 'true' || inputs.force_build == true }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4.3.0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5.6.0
+        with:
+          python-version: '3.10'
+
+      - name: Cache Playwright Chromium
+        id: cache-playwright
+        uses: actions/cache@v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-chromium-headless
+
+      - name: Install Playwright & Headless Chromium
+        run: |
+          pip install playwright
+          if [ "${{ steps.cache-playwright.outputs.cache-hit }}" != 'true' ]; then
+            playwright install chromium-headless-shell
+          fi
+
+      - name: Download Dev APK via Playwright
+        run: |
+          VERSION_DEV=$(cat version_dev.txt | tr -d '\r\n' | sed 's/^[vV]//' | xargs)
+          python .github/scripts/download_apk.py "$VERSION_DEV" "youtube_dev.apk"
+
+      - name: Upload Dev APK Artifact
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: dev-apk-file
+          path: youtube_dev.apk
+          retention-days: 1
+
+  build-stable:
+    name: Build YouTube Stable
+    needs: [check-updates, download-stable-apk]
+    if: ${{ needs.check-updates.outputs.has_new_stable == 'true' || inputs.force_build == true }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4.3.0
+
+      - name: Download Stable APK
+        uses: actions/download-artifact@v4.2.1
+        with:
+          name: stable-apk-file
+
+      - name: Set up Java JDK 21 & Tools
+        uses: actions/setup-java@v4.7.0
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      - name: Install p7zip & Zip
+        run: |
+          sudo apt-get update && sudo apt-get install -y p7zip-full zip
+          BUILD_TOOLS_PATH=$(find $ANDROID_HOME/build-tools/ -maxdepth 1 -mindepth 1 | sort -V | tail -n 1)
+          echo "$BUILD_TOOLS_PATH" >> $GITHUB_PATH
+
+      - name: Read Version
+        run: |
+          VERSION=$(cat version.txt | tr -d '\r\n' | sed 's/^[vV]//' | xargs)
+          echo "YT_VERSION=$VERSION" >> $GITHUB_ENV
+          mv youtube_stable.apk youtube.apk
+
+      - name: Download Tools & Resources
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download --repo MorpheApp/morphe-cli --pattern "*.jar" --clobber
+          mv $(ls *.jar | head -n 1) morphe-cli.jar
+
+          PATCH_TAG="${{ needs.check-updates.outputs.latest_stable_tag }}"
+          echo "PATCH_TAG=$PATCH_TAG" >> $GITHUB_ENV
+
+          gh release download "$PATCH_TAG" --repo MorpheApp/morphe-patches --pattern "*.mpp" --clobber
+          mv $(ls *.mpp | head -n 1) patches.mpp
+
+          mkdir -p bin_temp
+          curl -sL https://github.com/j-hc/revanced-magisk-module/archive/refs/heads/main.tar.gz | tar -xz -C bin_temp --strip-components=1 || true
+
+      - name: Restore or Generate KeyStore
+        id: ks_setup
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: bash .github/scripts/setup_keystore.sh
+
+      - name: Build & Package Module (Full j-hc Method)
+        run: bash .github/scripts/build_module.sh stable
+
+      - name: Upload Stable Artifacts
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: stable-apks
+          path: |
+            youtube_${{ env.YT_VERSION }}.apk
+            youtube_root_mount_${{ env.YT_VERSION }}_Magisk.zip
+          retention-days: 1
+
+  build-dev:
+    name: Build YouTube Dev
+    needs: [check-updates, download-dev-apk]
+    if: ${{ needs.check-updates.outputs.has_new_dev == 'true' || inputs.force_build == true }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4.3.0
+
+      - name: Download Dev APK
+        uses: actions/download-artifact@v4.2.1
+        with:
+          name: dev-apk-file
+
+      - name: Set up Java JDK 21 & Tools
+        uses: actions/setup-java@v4.7.0
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      - name: Install p7zip & Zip
+        run: |
+          sudo apt-get update && sudo apt-get install -y p7zip-full zip
+          BUILD_TOOLS_PATH=$(find $ANDROID_HOME/build-tools/ -maxdepth 1 -mindepth 1 | sort -V | tail -n 1)
+          echo "$BUILD_TOOLS_PATH" >> $GITHUB_PATH
+
+      - name: Read Version
+        run: |
+          VERSION=$(cat version_dev.txt | tr -d '\r\n' | sed 's/^[vV]//' | xargs)
+          echo "YT_VERSION=$VERSION" >> $GITHUB_ENV
+          mv youtube_dev.apk youtube.apk
+
+      - name: Download Tools & Resources
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download --repo MorpheApp/morphe-cli --pattern "*.jar" --clobber
+          mv $(ls *.jar | head -n 1) morphe-cli.jar
+
+          PATCH_TAG="${{ needs.check-updates.outputs.latest_dev_tag }}"
+          echo "PATCH_TAG=$PATCH_TAG" >> $GITHUB_ENV
+
+          gh release download "$PATCH_TAG" --repo MorpheApp/morphe-patches --pattern "*.mpp" --clobber
+          mv $(ls *.mpp | head -n 1) patches.mpp
+
+          mkdir -p bin_temp
+          curl -sL https://github.com/j-hc/revanced-magisk-module/archive/refs/heads/main.tar.gz | tar -xz -C bin_temp --strip-components=1 || true
+
+      - name: Restore or Generate KeyStore
+        id: ks_setup_dev
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: bash .github/scripts/setup_keystore.sh
+
+      - name: Build & Package Dev Module (Full j-hc Method)
+        run: bash .github/scripts/build_module.sh dev
+
+      - name: Upload Dev Artifacts
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: dev-apks
+          path: |
+            youtube_dev_${{ env.YT_VERSION }}.apk
+            youtube_dev_root_mount_${{ env.YT_VERSION }}_Magisk.zip
+          retention-days: 1
+
+  publish-release:
+    name: Create Combined Release & Cleanup
+    needs: [check-updates, build-stable, build-dev]
+    if: ${{ always() && (needs.build-stable.result == 'success' || needs.build-dev.result == 'success') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4.3.0
+
+      - name: Download Stable Artifacts (if built)
+        uses: actions/download-artifact@v4.2.1
+        with:
+          name: stable-apks
+          path: release_files
+        continue-on-error: true
+
+      - name: Download Dev Artifacts (if built)
+        uses: actions/download-artifact@v4.2.1
+        with:
+          name: dev-apks
+          path: release_files
+        continue-on-error: true
+
+      - name: Generate Compact Changelog Details
+        run: |
+          mkdir -p release_files
+          cd release_files
+          
+          STABLE_TAG="${{ needs.check-updates.outputs.latest_stable_tag }}"
+          DEV_TAG="${{ needs.check-updates.outputs.latest_dev_tag }}"
+
+          echo "## 🚀 Morphe YouTube Release Updates" > combined_changelog.txt
+          echo "" >> combined_changelog.txt
+          
+          if [ -n "$STABLE_TAG" ] && [ "$STABLE_TAG" != "null" ]; then
+            echo "📌 **Stable Patch Version:** [$STABLE_TAG](https://github.com/MorpheApp/morphe-patches/releases/tag/$STABLE_TAG)" >> combined_changelog.txt
+          fi
+
+          if [ -n "$DEV_TAG" ] && [ "$DEV_TAG" != "null" ]; then
+            echo "🧪 **Dev Patch Version:** [$DEV_TAG](https://github.com/MorpheApp/morphe-patches/releases/tag/$DEV_TAG)" >> combined_changelog.txt
+          fi
+
+          echo "" >> combined_changelog.txt
+          echo "---" >> combined_changelog.txt
+          echo "📦 **Yêu cầu MicroG (dành cho bản APK Non-Root):** [MicroG-RE Releases](https://github.com/MorpheApp/MicroG-RE/releases)" >> combined_changelog.txt
+
+          TAG_NAME="auto-build-$(date +'%Y.%m.%d-%H%M')"
+          echo "RELEASE_TAG=$TAG_NAME" >> $GITHUB_ENV
+
+      - name: Upload Available Files to Single Release
+        uses: softprops/action-gh-release@v2.2.1
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: "YouTube Morphe Update (${{ env.RELEASE_TAG }})"
+          body_path: release_files/combined_changelog.txt
+          files: |
+            release_files/*.apk
+            release_files/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete Artifacts After Successful Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/cleanup_artifacts.sh
+
+      - name: Send Telegram Notification
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_TO: ${{ secrets.TELEGRAM_CHAT_ID }}
+        if: ${{ env.TELEGRAM_TOKEN != '' && env.TELEGRAM_TO != '' }}
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          format: markdown
+          message: |
+            🎉 *YouTube Morphe Build Thành Công!*
+            
+            🏷 *Release Tag:* `${{ env.RELEASE_TAG }}`
+            📌 *Stable Patch:* [${{ needs.check-updates.outputs.latest_stable_tag }}](https://github.com/MorpheApp/morphe-patches/releases/tag/${{ needs.check-updates.outputs.latest_stable_tag }})
+            🧪 *Dev Patch:* [${{ needs.check-updates.outputs.latest_dev_tag }}](https://github.com/MorpheApp/morphe-patches/releases/tag/${{ needs.check-updates.outputs.latest_dev_tag }})
+            
+            🔗 [Xem Release & Tải File](https://github.com/${{ github.repository }}/releases/tag/${{ env.RELEASE_TAG }})
+            🛡 [Tải MicroG-RE](https://github.com/MorpheApp/MicroG-RE/releases)
+
+  cleanup-workflows:
+    name: Cleanup Old Workflow Runs
+    needs: [publish-release]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      - name: Delete Old Workflow Runs via GH CLI (Keep last 3)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CURRENT_WORKFLOW_ID=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" --jq '.workflow_id')
+
+          if [ -n "$CURRENT_WORKFLOW_ID" ] && [ "$CURRENT_WORKFLOW_ID" != "null" ]; then
+            OLD_RUNS=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/$CURRENT_WORKFLOW_ID/runs" \
+              --jq '.workflow_runs | sort_by(.created_at) | reverse | .[3:] | .[].id')
+
+            if [ -n "$OLD_RUNS" ]; then
+              for RUN_ID in $OLD_RUNS; do
+                echo "  + Deleting old run ID: $RUN_ID"
+                gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/runs/$RUN_ID" || true
+              done
+              echo "-> Cleanup complete!"
+            else
+              echo "-> Fewer than 3 runs found. Skipping cleanup."
+            fi
+          else
+            echo "-> Could not determine workflow ID. Skipping cleanup."
+          fi
