@@ -330,6 +330,21 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash .github/scripts/cleanup_artifacts.sh
 
+      - name: Cleanup Old GitHub Releases (Keep last 3)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          OLD_RELEASES=$(gh release list --limit 100 | awk '{print $1}' | tail -n +4)
+          if [ -n "$OLD_RELEASES" ]; then
+            for TAG in $OLD_RELEASES; do
+              echo "Deleting old release & git tag: $TAG"
+              gh release delete "$TAG" -y --cleanup-tag || true
+            done
+            echo "-> Release cleanup complete!"
+          else
+            echo "-> 3 or fewer releases found. Skipping cleanup."
+          fi
+
       - name: Send Telegram Notification
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -350,7 +365,7 @@ jobs:
             🔗 [Xem Release & Tải File](https://github.com/${{ github.repository }}/releases/tag/${{ env.RELEASE_TAG }})
             🛡 [Tải MicroG-RE](https://github.com/MorpheApp/MicroG-RE/releases)
 
-cleanup-workflows:
+  cleanup-workflows:
     name: Cleanup Old Workflow Runs
     needs: [publish-release]
     if: ${{ always() }}
@@ -364,19 +379,15 @@ cleanup-workflows:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 1. Lấy Workflow ID của luồng hiện tại
-          WORKFLOW_ID=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" --jq '.workflow_id')
+          CURRENT_WORKFLOW_ID=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" --jq '.workflow_id')
 
-          if [ -n "$WORKFLOW_ID" ] && [ "$WORKFLOW_ID" != "null" ]; then
-            echo "-> Working on Workflow ID: $WORKFLOW_ID"
-            
-            # 2. Lấy danh sách ID các lượt chạy cũ (bỏ qua 3 lượt chạy mới nhất)
-            OLD_RUNS=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/$WORKFLOW_ID/runs?per_page=100" \
+          if [ -n "$CURRENT_WORKFLOW_ID" ] && [ "$CURRENT_WORKFLOW_ID" != "null" ]; then
+            OLD_RUNS=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/$CURRENT_WORKFLOW_ID/runs" \
               --jq '.workflow_runs | sort_by(.created_at) | reverse | .[3:] | .[].id')
 
             if [ -n "$OLD_RUNS" ]; then
               for RUN_ID in $OLD_RUNS; do
-                echo "  + Deleting old run ID: $RUN_ID..."
+                echo "  + Deleting old run ID: $RUN_ID"
                 gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/runs/$RUN_ID" || true
               done
               echo "-> Cleanup complete!"
