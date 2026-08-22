@@ -1,46 +1,22 @@
-```markdown
-# 🚀 YouTube Morphe Auto-Builder (Root Mount & Non-Root)
+# 🚀 YouTube Morphe Root Mount - Auto Builder
 
-Một quy trình tự động hóa mạnh mẽ dựa trên **GitHub Actions** giúp tự động kiểm tra, tải ứng dụng và build bản **YouTube Morphe** (Patch mới nhất) dưới dạng **Magisk/KernelSU/APatch Module** (Root Mount) và file **APK chuẩn**.
----
-## ✨ Tính Năng Nổi Bật
+Kho lưu trữ này sử dụng **GitHub Actions** để tự động kiểm tra bản vá mới nhất từ [Morphe Patches](https://github.com/MorpheApp/morphe-patches), tải xuống phiên bản YouTube tương ứng, và đóng gói thành **Magisk/KernelSU Root Mount Module** cùng file APK hoàn chỉnh.
 
-* **🤖 Tự động hoàn toàn (Automated Schedule):** Tự động chạy mỗi ngày để kiểm tra bản Patch mới nhất từ `MorpheApp/morphe-patches`.
-* **⚡ Hỗ trợ song song 2 phiên bản:** Build cả bản **Stable** (Ổn định) và bản **Dev** (Thử nghiệm) cùng lúc.
+## 📥 Tải xuống & Hướng dẫn cài đặt
 
-## 🚀 Cách Sử Dụng
+Bạn có thể tải trực tiếp các bản build mới nhất tại mục **[Releases](https://github.com/USERNAME/REPOSITORY/releases)** của kho lưu trữ.
 
-### 1. Chạy tự động (Automatic)
+### 1. Bản Root Mount (Khuyên dùng cho máy đã Root)
+* **File tải**: `youtube_root_mount_<version>_Magisk.zip` hoặc `youtube_dev_root_mount_<version>_Magisk.zip`
+* **Cách cài đặt**: Flash trực tiếp qua **Magisk** hoặc **KernelSU**, sau đó khởi động lại thiết bị.
 
-Workflow sẽ tự động kích hoạt vào lúc **23:00 giờ Việt Nam (16:00 UTC)** hàng ngày. Nếu phát hiện có Patch mới từ MorpheApp, hệ thống sẽ tiến hành build và tạo Release mới.
+### 2. Bản APK đơn lẻ (Dành cho máy Non-Root)
+* **File tải**: `youtube_<version>.apk` hoặc `youtube_dev_<version>.apk`
+* **Yêu cầu quan trọng (MicroG)**: Do ứng dụng yêu cầu dịch vụ Google để đăng nhập tài khoản, bạn **bắt buộc phải cài đặt MicroG** trước khi cài đặt APK:
+  1. Tải và cài đặt **[MicroG-RE (MicroG Companion)](https://github.com/MorpheApp/MicroG-RE/releases)** phiên bản mới nhất.
+  2. Mở MicroG và cấp quyền cần thiết, sau đó đăng nhập tài khoản Google của bạn.
+  3. Cài đặt file `youtube_<version>.apk` đã tải từ mục Releases và sử dụng bình thường.
 
-### 2. Ép Build thủ công (Manual Trigger)
-
-1. Truy cập tab **Actions** trên GitHub.
-2. Chọn workflow **Check & Auto Build Root Mount YouTube**.
-3. Bấm **Run workflow**.
-4. Tích chọn **"Ép Build thủ công (bỏ qua kiểm tra Patch)"** nếu muốn kích hoạt build ngay lập tức kể cả khi không có patch mới.
-
----
-
-## 📲 Cài Đặt Ứng Dụng
-
-Sau khi build thành công, vào mục **Releases** để tải file tương ứng:
-
-* **Bản Root (Magisk/KernelSU/APatch):** Tải file `.zip` (ví dụ: `youtube_root_mount_x.x.x_Magisk.zip`) -> Flashing qua ứng dụng Magisk / KernelSU / APatch -> Khởi động lại máy.
-
-
-* **Bản Non-Root (APK thông thường):** Tải file `.apk` -> Yêu cầu cài đặt thêm [MicroG-RE](https://github.com/MorpheApp/MicroG-RE/releases) để đăng nhập tài khoản Google.
-
----
-
-## 💖 Lời Cảm Ơn (Credits)
-
-* [MorpheApp](https://github.com/MorpheApp) - Dự án cung cấp Morphe CLI & Patches.
-
-
-* [j-hc/revanced-magisk-module](https://github.com/j-hc/revanced-magisk-module) - Cấu trúc script đóng gói Root Mount Module.
-
-```
-
-```
+## 💡 Lời cảm ơn & Nguồn tham khảo
+* Dự án lấy cảm hứng từ phương pháp build và cấu trúc mã nguồn của **[j-hc](https://github.com/j-hc)**.
+* Sử dụng công cụ patch từ **[MorpheApp](https://github.com/MorpheApp)**.
