@@ -4,7 +4,7 @@ Kho lưu trữ này sử dụng **GitHub Actions** để tự động kiểm tra
 
 ## 📥 Tải xuống & Hướng dẫn cài đặt
 
-Bạn có thể tải trực tiếp các bản build mới nhất tại mục **[Releases](https://github.com/USERNAME/REPOSITORY/releases)** của kho lưu trữ.
+Bạn có thể tải trực tiếp các bản build mới nhất tại mục **[Releases](https://github.com/tongduychuong/yt_patch_nonroot_root/releases)** của kho lưu trữ.
 
 ### 1. Bản Root Mount (Khuyên dùng cho máy đã Root)
 * **File tải**: `youtube_root_mount_<version>_Magisk.zip` hoặc `youtube_dev_root_mount_<version>_Magisk.zip`
