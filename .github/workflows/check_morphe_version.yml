@@ -23,8 +23,11 @@ jobs:
 
       # ==========================================================
       # MAIN - STABLE YOUTUBE
-      # Source: Morphe main / patches-list.json
-      # Output: version.txt
+      # Source:
+      # https://raw.githubusercontent.com/MorpheApp/morphe-patches/main/patches-list.json
+      #
+      # Output:
+      # version.txt
       # ==========================================================
       - name: Check Stable YouTube Version - Main
         shell: bash
@@ -33,6 +36,7 @@ jobs:
           import json
           import os
           import re
+          import sys
           import urllib.request
 
           URL = (
@@ -40,7 +44,10 @@ jobs:
               "MorpheApp/morphe-patches/main/patches-list.json"
           )
 
-          print(f"Checking Main: {URL}")
+          print(
+              f"Checking Main: {URL}",
+              file=sys.stderr
+          )
 
           request = urllib.request.Request(
               URL,
@@ -65,19 +72,15 @@ jobs:
                   for x in version.split(".")
               )
 
-          # ------------------------------------------------------
-          # Morphe JSON:
+          # Morphe structure:
           #
           # patches[]
-          #   compatiblePackages[]
-          #     packageName
-          #     targets[]
-          #       version
-          #       isExperimental
+          #   └── compatiblePackages[]
+          #         ├── packageName
+          #         └── targets[]
+          #               ├── version
+          #               └── isExperimental
           #
-          # Every nullable array is protected with "or []".
-          # ------------------------------------------------------
-
           for patch in (data.get("patches") or []):
 
               if not isinstance(patch, dict):
@@ -94,7 +97,6 @@ jobs:
                       package.get("packageName") or ""
                   ).lower()
 
-                  # Only YouTube.
                   if package_name != (
                       "com.google.android.youtube"
                   ):
@@ -149,7 +151,7 @@ jobs:
               ) as file:
                   current_version = file.read().strip()
 
-          # ALWAYS synchronize version.txt with stable.
+          # ALWAYS synchronize version.txt.
           # Downgrade is intentional.
           if current_version != stable_version:
 
@@ -172,15 +174,12 @@ jobs:
           print(
               f"VERSION_CHANGED_MAIN={changed}"
           )
-
           print(
               f"NEW_VERSION_MAIN={stable_version}"
           )
-
           print(
               f"CURRENT_VERSION_MAIN={current_version}"
           )
-
           print(
               f"STATUS_MAIN={status}"
           )
@@ -190,8 +189,11 @@ jobs:
 
       # ==========================================================
       # DEV - YOUTUBE
-      # Source: Morphe dev / README.md
-      # Output: version_dev.txt
+      # Source:
+      # https://raw.githubusercontent.com/MorpheApp/morphe-patches/dev/README.md
+      #
+      # Output:
+      # version_dev.txt
       # ==========================================================
       - name: Check Dev YouTube Version - Dev README
         shell: bash
@@ -199,6 +201,7 @@ jobs:
           python3 <<'PY' > dev_output.txt
           import os
           import re
+          import sys
           import urllib.request
 
           URL = (
@@ -206,7 +209,10 @@ jobs:
               "MorpheApp/morphe-patches/dev/README.md"
           )
 
-          print(f"Checking Dev: {URL}")
+          print(
+              f"Checking Dev: {URL}",
+              file=sys.stderr
+          )
 
           request = urllib.request.Request(
               URL,
@@ -224,7 +230,7 @@ jobs:
               )
 
           # ------------------------------------------------------
-          # Find YouTube section in README.
+          # Find YouTube section
           # ------------------------------------------------------
 
           youtube_match = re.search(
@@ -242,12 +248,7 @@ jobs:
               youtube_block = readme
 
           # ------------------------------------------------------
-          # Extract YouTube versions.
-          # Example:
-          #
-          # 21.29.366
-          # 21.28.204
-          # 21.26.360
+          # Extract versions
           # ------------------------------------------------------
 
           versions = set(
@@ -257,7 +258,7 @@ jobs:
               )
           )
 
-          # Ignore date-like versions.
+          # Ignore date-like values.
           versions = [
               version
               for version in versions
@@ -301,10 +302,7 @@ jobs:
                       file.read().strip()
                   )
 
-          if (
-              current_dev_version
-              != dev_version
-          ):
+          if current_dev_version != dev_version:
 
               with open(
                   "version_dev.txt",
@@ -325,15 +323,12 @@ jobs:
           print(
               f"VERSION_CHANGED_DEV={changed}"
           )
-
           print(
               f"NEW_VERSION_DEV={dev_version}"
           )
-
           print(
               f"CURRENT_VERSION_DEV={current_dev_version}"
           )
-
           print(
               f"STATUS_DEV={status}"
           )
@@ -353,23 +348,16 @@ jobs:
           MAIN_STATUS="Skip"
           DEV_STATUS="Skip"
 
-          if [
-            "$VERSION_CHANGED_MAIN" = "true"
-          ]; then
+          if [ "$VERSION_CHANGED_MAIN" = "true" ]; then
             MAIN_STATUS="$NEW_VERSION_MAIN"
           fi
 
-          if [
-            "$VERSION_CHANGED_DEV" = "true"
-          ]; then
+          if [ "$VERSION_CHANGED_DEV" = "true" ]; then
             DEV_STATUS="$NEW_VERSION_DEV"
           fi
 
-          if [
-            "$VERSION_CHANGED_MAIN" = "true"
-          ] || [
-            "$VERSION_CHANGED_DEV" = "true"
-          ]; then
+          if [ "$VERSION_CHANGED_MAIN" = "true" ] || \
+             [ "$VERSION_CHANGED_DEV" = "true" ]; then
 
             git config --global user.name \
               "github-actions[bot]"
