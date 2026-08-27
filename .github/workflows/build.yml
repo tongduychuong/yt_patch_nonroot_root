@@ -375,25 +375,17 @@ jobs:
       contents: read
 
     steps:
-      - name: Delete Old Workflow Runs via GH CLI (Keep last 3)
+      - name: Delete excess workflow runs
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          CURRENT_WORKFLOW_ID=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" --jq '.workflow_id')
-
-          if [ -n "$CURRENT_WORKFLOW_ID" ] && [ "$CURRENT_WORKFLOW_ID" != "null" ]; then
-            OLD_RUNS=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/$CURRENT_WORKFLOW_ID/runs" \
-              --jq '.workflow_runs | sort_by(.created_at) | reverse | .[3:] | .[].id')
-
-            if [ -n "$OLD_RUNS" ]; then
-              for RUN_ID in $OLD_RUNS; do
-                echo "  + Deleting old run ID: $RUN_ID"
-                gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/runs/$RUN_ID" || true
-              done
-              echo "-> Cleanup complete!"
-            else
-              echo "-> Fewer than 3 runs found. Skipping cleanup."
-            fi
-          else
-            echo "-> Could not determine workflow ID. Skipping cleanup."
-          fi
+          echo "Fetching workflow runs..."
+          # Lấy danh sách tất cả các run ID, sắp xếp mới nhất lên đầu, bỏ qua 5 cái đầu tiên và xóa các cái còn lại
+          run_ids=$(gh run list --limit 100 --json databaseId -q '.[5:][].databaseId')
+          
+          for id in $run_ids; do
+            echo "Deleting run ID: $id"
+            gh run delete "$id" || true
+          done
+          echo "Cleanup completed!"
