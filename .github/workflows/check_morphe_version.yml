@@ -22,7 +22,7 @@ jobs:
           python-version: '3.x'
 
       # ==========================================================
-      # MAIN - Stable YouTube
+      # MAIN - STABLE YOUTUBE
       # Source: Morphe main / patches-list.json
       # Output: version.txt
       # ==========================================================
@@ -44,54 +44,71 @@ jobs:
 
           request = urllib.request.Request(
               URL,
-              headers={"User-Agent": "GitHub-Actions"}
+              headers={
+                  "User-Agent": "GitHub-Actions"
+              }
           )
 
-          with urllib.request.urlopen(request, timeout=30) as response:
-              data = json.loads(response.read().decode("utf-8"))
+          with urllib.request.urlopen(
+              request,
+              timeout=30
+          ) as response:
+              data = json.loads(
+                  response.read().decode("utf-8")
+              )
 
           versions = set()
 
           def version_key(version):
               return tuple(
-                  int(x) for x in version.split(".")
+                  int(x)
+                  for x in version.split(".")
               )
 
-          # Morphe structure:
+          # ------------------------------------------------------
+          # Morphe JSON:
           #
           # patches[]
-          #   └── compatiblePackages[]
-          #         ├── packageName
-          #         └── targets[]
-          #               ├── version
-          #               └── isExperimental
+          #   compatiblePackages[]
+          #     packageName
+          #     targets[]
+          #       version
+          #       isExperimental
           #
-          for patch in data.get("patches", []):
+          # Every nullable array is protected with "or []".
+          # ------------------------------------------------------
+
+          for patch in (data.get("patches") or []):
+
               if not isinstance(patch, dict):
                   continue
 
-              for package in patch.get(
-                  "compatiblePackages", []
+              for package in (
+                  patch.get("compatiblePackages") or []
               ):
+
                   if not isinstance(package, dict):
                       continue
 
                   package_name = str(
-                      package.get("packageName", "")
+                      package.get("packageName") or ""
                   ).lower()
 
-                  # ONLY YouTube
-                  if package_name != "com.google.android.youtube":
+                  # Only YouTube.
+                  if package_name != (
+                      "com.google.android.youtube"
+                  ):
                       continue
 
-                  for target in package.get(
-                      "targets", []
+                  for target in (
+                      package.get("targets") or []
                   ):
+
                       if not isinstance(target, dict):
                           continue
 
                       version = str(
-                          target.get("version", "")
+                          target.get("version") or ""
                       ).strip()
 
                       is_experimental = bool(
@@ -129,35 +146,50 @@ jobs:
                   "version.txt",
                   "r",
                   encoding="utf-8"
-              ) as f:
-                  current_version = f.read().strip()
+              ) as file:
+                  current_version = file.read().strip()
 
-          # ALWAYS update version.txt to the current
-          # stable version, even if it means downgrade.
+          # ALWAYS synchronize version.txt with stable.
+          # Downgrade is intentional.
           if current_version != stable_version:
+
               with open(
                   "version.txt",
                   "w",
                   encoding="utf-8"
-              ) as f:
-                  f.write(stable_version + "\n")
+              ) as file:
+                  file.write(
+                      stable_version + "\n"
+                  )
 
               changed = "true"
               status = "Updated"
+
           else:
               changed = "false"
               status = "Skip"
 
-          print(f"VERSION_CHANGED_MAIN={changed}")
-          print(f"NEW_VERSION_MAIN={stable_version}")
-          print(f"CURRENT_VERSION_MAIN={current_version}")
-          print(f"STATUS_MAIN={status}")
+          print(
+              f"VERSION_CHANGED_MAIN={changed}"
+          )
+
+          print(
+              f"NEW_VERSION_MAIN={stable_version}"
+          )
+
+          print(
+              f"CURRENT_VERSION_MAIN={current_version}"
+          )
+
+          print(
+              f"STATUS_MAIN={status}"
+          )
           PY
 
           cat main_output.txt
 
       # ==========================================================
-      # DEV - YouTube
+      # DEV - YOUTUBE
       # Source: Morphe dev / README.md
       # Output: version_dev.txt
       # ==========================================================
@@ -178,31 +210,46 @@ jobs:
 
           request = urllib.request.Request(
               URL,
-              headers={"User-Agent": "GitHub-Actions"}
+              headers={
+                  "User-Agent": "GitHub-Actions"
+              }
           )
 
           with urllib.request.urlopen(
               request,
               timeout=30
           ) as response:
-              readme = response.read().decode("utf-8")
+              readme = response.read().decode(
+                  "utf-8"
+              )
 
-          # Find YouTube section.
-          match = re.search(
+          # ------------------------------------------------------
+          # Find YouTube section in README.
+          # ------------------------------------------------------
+
+          youtube_match = re.search(
               r"(?is)"
               r"(?:^|\n)#+\s*YouTube\b"
               r"(.*?)(?=\n#+\s|\Z)",
               readme
           )
 
-          if match:
-              youtube_block = match.group(1)
+          if youtube_match:
+              youtube_block = (
+                  youtube_match.group(1)
+              )
           else:
               youtube_block = readme
 
-          # Find versions such as:
+          # ------------------------------------------------------
+          # Extract YouTube versions.
+          # Example:
+          #
           # 21.29.366
           # 21.28.204
+          # 21.26.360
+          # ------------------------------------------------------
+
           versions = set(
               re.findall(
                   r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\b",
@@ -242,32 +289,54 @@ jobs:
 
           current_dev_version = ""
 
-          if os.path.exists("version_dev.txt"):
+          if os.path.exists(
+              "version_dev.txt"
+          ):
               with open(
                   "version_dev.txt",
                   "r",
                   encoding="utf-8"
-              ) as f:
-                  current_dev_version = f.read().strip()
+              ) as file:
+                  current_dev_version = (
+                      file.read().strip()
+                  )
 
-          if current_dev_version != dev_version:
+          if (
+              current_dev_version
+              != dev_version
+          ):
+
               with open(
                   "version_dev.txt",
                   "w",
                   encoding="utf-8"
-              ) as f:
-                  f.write(dev_version + "\n")
+              ) as file:
+                  file.write(
+                      dev_version + "\n"
+                  )
 
               changed = "true"
               status = "Updated"
+
           else:
               changed = "false"
               status = "Skip"
 
-          print(f"VERSION_CHANGED_DEV={changed}")
-          print(f"NEW_VERSION_DEV={dev_version}")
-          print(f"CURRENT_VERSION_DEV={current_dev_version}")
-          print(f"STATUS_DEV={status}")
+          print(
+              f"VERSION_CHANGED_DEV={changed}"
+          )
+
+          print(
+              f"NEW_VERSION_DEV={dev_version}"
+          )
+
+          print(
+              f"CURRENT_VERSION_DEV={current_dev_version}"
+          )
+
+          print(
+              f"STATUS_DEV={status}"
+          )
           PY
 
           cat dev_output.txt
@@ -284,16 +353,23 @@ jobs:
           MAIN_STATUS="Skip"
           DEV_STATUS="Skip"
 
-          if [ "$VERSION_CHANGED_MAIN" = "true" ]; then
+          if [
+            "$VERSION_CHANGED_MAIN" = "true"
+          ]; then
             MAIN_STATUS="$NEW_VERSION_MAIN"
           fi
 
-          if [ "$VERSION_CHANGED_DEV" = "true" ]; then
+          if [
+            "$VERSION_CHANGED_DEV" = "true"
+          ]; then
             DEV_STATUS="$NEW_VERSION_DEV"
           fi
 
-          if [ "$VERSION_CHANGED_MAIN" = "true" ] || \
-             [ "$VERSION_CHANGED_DEV" = "true" ]; then
+          if [
+            "$VERSION_CHANGED_MAIN" = "true"
+          ] || [
+            "$VERSION_CHANGED_DEV" = "true"
+          ]; then
 
             git config --global user.name \
               "github-actions[bot]"
@@ -301,25 +377,29 @@ jobs:
             git config --global user.email \
               "41898282+github-actions[bot]@users.noreply.github.com"
 
-            git add version.txt version_dev.txt
+            git add \
+              version.txt \
+              version_dev.txt
 
             git commit -m \
               "build: update YouTube versions (main: $MAIN_STATUS, dev: $DEV_STATUS)"
 
             git push
 
-            echo "========================================"
+            echo "======================================"
             echo "YouTube versions updated"
             echo "Main: $MAIN_STATUS"
             echo "Dev : $DEV_STATUS"
-            echo "========================================"
+            echo "======================================"
 
           else
-            echo "========================================"
+
+            echo "======================================"
             echo "No version changes"
             echo "Main: Skip"
             echo "Dev : Skip"
-            echo "========================================"
+            echo "======================================"
+
           fi
 
       # ==========================================================
