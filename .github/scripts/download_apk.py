@@ -1,5 +1,12 @@
-import sys, os, zipfile
+import sys
+import os
+import zipfile
 from playwright.sync_api import sync_playwright
+
+# Kiểm tra tham số truyền vào
+if len(sys.argv) < 3:
+    print("Sử dụng: python script.py <target_version> <output_filename>")
+    sys.exit(1)
 
 target_version = sys.argv[1].strip()
 output_filename = sys.argv[2].strip()
@@ -13,14 +20,12 @@ with sync_playwright() as p:
     print(f"Đang truy cập: {sharing_url}")
     page.goto(sharing_url, wait_until="networkidle", timeout=60000)
     
-    # In ra tiêu đề trang để kiểm tra xem đã load được trang Synology chưa
-    print(f"Tiêu đề trang: {page.title()}")
-    
-    # Chờ danh sách file xuất hiện (thay đổi selector tùy theo giao diện thực tế của Synology File Station)
+    # Chờ trang load danh sách file
     try:
-        page.wait_for_selector(".file-list, tr, [role='row']", timeout=15000)
+        page.wait_for_selector("body", timeout=15000)
+        page.wait_for_timeout(2000) # Chờ thêm chút để UI render hoàn tất
     except Exception as e:
-        print(f"Không tìm thấy danh sách file trên trang: {e}")
+        print(f"Lỗi khi chờ trang tải: {e}")
         sys.exit(1)
 
     target_selector = f"text=/{target_version}.*\\.apk/i"
@@ -34,52 +39,55 @@ with sync_playwright() as p:
         file_item = page.locator(general_apk_selector).first
         print("Không tìm thấy đúng phiên bản, chọn file APK thay thế đầu tiên.")
     else:
-        print("Không tìm thấy bất kỳ file APK nào trên trang.")
+        print("Lỗi: Không tìm thấy bất kỳ file APK nào trên trang.")
         sys.exit(1)
 
-    # Click chọn file
+    # Click chọn file trước
     file_item.click()
     page.wait_for_timeout(1000)
 
-    # Tìm nút download trên giao diện Synology
+    # Danh sách selector tiếng Anh tối ưu cho nút Download trên Synology
     download_selectors = [
-        "button:has-text('Download')", 
-        "button:has-text('Tải xuống')", 
-        "button:has-text('Tải')",
-        "[title*='Download']",
-        "[title*='Tải xuống']"
+        "button:has-text('Download')",
+        "span:has-text('Download')",
+        "div:has-text('Download')",
+        "a:has-text('Download')",
+        "[role='button']:has-text('Download')",
+        "[title*='Download']"
     ]
-    
+
     download_btn = None
     for sel in download_selectors:
-        if page.locator(sel).is_visible():
-            download_btn = page.locator(sel).first
-            break
+        locator = page.locator(sel).first
+        try:
+            if locator.count() > 0 and locator.is_visible():
+                download_btn = locator
+                print(f"Đã tìm thấy nút Download với selector: {sel}")
+                break
+        except Exception:
+            continue
 
+    # Thực hiện tải file
     try:
         with page.expect_download(timeout=120000) as download_info:
             if download_btn:
                 download_btn.click()
             else:
-                # Thử double click nếu không tìm thấy nút download nổi
+                print("Không tìm thấy nút Download hiển thị, đang thử double-click vào file...")
                 file_item.dblclick()
         
         download = download_info.value
         download.save_as(output_filename)
-        print(f"Tải file thành công về: {output_filename}")
+        print(f"Tải file thành công: {output_filename}")
     except Exception as e:
-        print(f"Lỗi trong quá trình chờ và tải file: {e}")
+        print(f"Lỗi trong quá trình tải file: {e}")
         sys.exit(1)
         
     browser.close()
 
-# Kiểm tra file tải về
-if os.path.exists(output_filename):
-    file_size = os.path.getsize(output_filename)
-    print(f"Kích thước file tải về: {file_size} bytes")
-
-if not zipfile.is_zipfile(output_filename):
-    print("Cảnh báo: File tải về không phải là định dạng nén hợp lệ (có thể file bị lỗi hoặc trang web trả về mã lỗi HTML).")
+# Kiểm tra tính hợp lệ của file APK (dưới dạng zip)
+if not os.path.exists(output_filename) or not zipfile.is_zipfile(output_filename):
+    print("Lỗi: File tải về không tồn tại hoặc không phải là định dạng nén APK hợp lệ.")
     sys.exit(1)
-else:
-    print("File hợp lệ!")
+
+print("Hoàn tất! File hợp lệ.")
