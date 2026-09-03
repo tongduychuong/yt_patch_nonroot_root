@@ -334,7 +334,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          OLD_RELEASES=$(gh release list --limit 100 | awk '{print $1}' | tail -n +4)
+          OLD_RELEASES=$(gh release list --limit 100 | awk '{print $1}' | tail -n +11)
           if [ -n "$OLD_RELEASES" ]; then
             for TAG in $OLD_RELEASES; do
               echo "Deleting old release & git tag: $TAG"
@@ -342,7 +342,7 @@ jobs:
             done
             echo "-> Release cleanup complete!"
           else
-            echo "-> 3 or fewer releases found. Skipping cleanup."
+            echo "-> 10 or fewer releases found. Skipping cleanup."
           fi
 
       - name: Send Telegram Notification
