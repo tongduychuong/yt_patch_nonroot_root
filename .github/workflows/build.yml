@@ -330,20 +330,21 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash .github/scripts/cleanup_artifacts.sh
 
-      - name: Cleanup Old GitHub Releases (Keep last 3)
+      - name: Cleanup old releases and tags
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.CUSTOM_PAT || github.token }}
         run: |
-          OLD_RELEASES=$(gh release list --limit 100 | awk '{print $1}' | tail -n +11)
-          if [ -n "$OLD_RELEASES" ]; then
-            for TAG in $OLD_RELEASES; do
-              echo "Deleting old release & git tag: $TAG"
-              gh release delete "$TAG" -y --cleanup-tag || true
+          set -e
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          AUTH=(-H "Accept: application/vnd.github+json" -H "Authorization: Bearer ${GH_TOKEN}")
+
+          curl -fsSL "${AUTH[@]}" "$API/releases?per_page=100" |
+            jq -r 'sort_by(.published_at // .created_at) | reverse | .[10:][] | "\(.id)|\(.tag_name)"' |
+            while IFS='|' read -r id tag; do
+              [ -z "$id" ] && continue
+              curl -fsSL -X DELETE "${AUTH[@]}" "$API/releases/$id"
+              curl -s -X DELETE "${AUTH[@]}" "$API/git/refs/tags/$tag" >/dev/null || true
             done
-            echo "-> Release cleanup complete!"
-          else
-            echo "-> 10 or fewer releases found. Skipping cleanup."
-          fi
 
       - name: Send Telegram Notification
         env:
