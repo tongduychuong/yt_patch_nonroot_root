@@ -27,6 +27,7 @@ else
   ZIP_OUT="youtube_root_mount_${YT_VERSION}_Magisk.zip"
 fi
 
+# 1. Patch file APK cho bản Root (giữ nguyên logic cũ của bạn)
 java -jar morphe-cli.jar patch -p patches.mpp \
   --options options.json \
   -O "GmsCore support:packageName=com.google.tdc.android.youtube" \
@@ -34,11 +35,37 @@ java -jar morphe-cli.jar patch -p patches.mpp \
   -e "" \
   --out "$APK_OUT" youtube.apk
 
+# 2. Xử lý build và ký Keystore cho base APK dùng trong module Magisk (Mount)
 java -jar morphe-cli.jar patch -p patches.mpp --mount -d "GmsCore support" -d "Custom branding" -e "" --out "unaligned_base.apk" youtube.apk
 zip -d unaligned_base.apk "lib/*" || true
 
 zipalign -v -f 4 unaligned_base.apk aligned_base.apk
 apksigner sign --ks "$KS_PATH" --ks-pass pass:"$KS_PASS" --ks-key-alias "$KS_ALIAS" --key-pass pass:"$KS_KEY_PASS" --out base.apk aligned_base.apk
+
+# ==========================================
+# BỔ SUNG: XUẤT THÊM FILE APK NON-ROOT (ĐÃ KÝ KEYSTORE)
+# ==========================================
+if [ -n "$KS_PATH" ] && [ -f "$KS_PATH" ]; then
+  echo "- Đang tiến hành build và ký Keystore cho bản Non-Root độc lập..."
+  
+  # Patch bản Non-Root (không dùng cờ --mount)
+  java -jar morphe-cli.jar patch -p patches.mpp \
+    --options options.json \
+    -O "GmsCore support:packageName=com.google.tdc.android.youtube" \
+    -d "Custom branding" \
+    -e "" \
+    --out "unaligned_non_root.apk" youtube.apk
+
+  zipalign -v -f 4 unaligned_non_root.apk aligned_non_root.apk
+  
+  # Ký bằng Keystore
+  apksigner sign --ks "$KS_PATH" --ks-pass pass:"$KS_PASS" --ks-key-alias "$KS_ALIAS" --key-pass pass:"$KS_KEY_PASS" --out "youtube_non_root_${YT_VERSION}.apk" aligned_non_root.apk
+  
+  # Dọn dẹp file tạm của non-root
+  rm -f unaligned_non_root.apk aligned_non_root.apk
+  echo "- Đã xuất thành công file: youtube_non_root_${YT_VERSION}.apk"
+fi
+# ==========================================
 
 BASE_TEMPLATE=$(mktemp -d -p "/tmp")
 mkdir -p "$BASE_TEMPLATE/META-INF/com/google/android" "$BASE_TEMPLATE/stock"
@@ -89,7 +116,7 @@ if [ -z "$TARGET_APK" ]; then
     pm install -r "$MODPATH/stock/base.apk" >/dev/null 2>&1
   fi
 else
-  ui_print "- Stock YouTube found at: $TARGET_APK"
+  ui_print "- Stock YouTube found at: $TARGET_PKG"
 fi
 
 set_perm_recursive "$MODPATH" 0 0 0755 0644
