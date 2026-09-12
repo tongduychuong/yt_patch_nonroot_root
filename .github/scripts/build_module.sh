@@ -4,17 +4,6 @@ set -e
 BUILD_MODE=$1
 PATCHES_VER="${PATCH_TAG##*-}"
 
-cat << 'EOF' > options.json
-[
-  {
-    "patchName": "GmsCore support",
-    "options": {
-      "packageName": "com.google.tdc.android.youtube"
-    }
-  }
-]
-EOF
-
 if [ "$BUILD_MODE" == "dev" ]; then
   MODULE_ID="youtube-morphe-dev-mount-root"
   MODULE_NAME="YouTube Morphe Dev (Mount Root)"
@@ -27,15 +16,36 @@ else
   ZIP_OUT="youtube_root_mount_${YT_VERSION}_Magisk.zip"
 fi
 
-# 1. Patch file APK cho bản Root (giữ nguyên logic cũ của bạn)
+# ==========================================
+# 1. BUILD BẢN NON-ROOT (Đổi package name để cài độc lập)
+# ==========================================
+cat << 'EOF' > options_nonroot.json
+[
+  {
+    "patchName": "GmsCore support",
+    "options": {
+      "packageName": "com.google.tdc.android.youtube"
+    }
+  }
+]
+EOF
+
+echo "- Đang tiến hành patch và ký Keystore cho bản Non-Root độc lập..."
 java -jar morphe-cli.jar patch -p patches.mpp \
-  --options options.json \
+  --options options_nonroot.json \
   -O "GmsCore support:packageName=com.google.tdc.android.youtube" \
   -d "Custom branding" \
   -e "" \
-  --out "$APK_OUT" youtube.apk
+  --out "unaligned_non_root.apk" youtube.apk
 
-# 2. Xử lý build và ký Keystore cho base APK dùng trong module Magisk (Mount)
+zipalign -v -f 4 unaligned_non_root.apk aligned_non_root.apk
+apksigner sign --ks "$KS_PATH" --ks-pass pass:"$KS_PASS" --ks-key-alias "$KS_ALIAS" --key-pass pass:"$KS_KEY_PASS" --out "$APK_OUT" aligned_non_root.apk
+rm -f unaligned_non_root.apk aligned_non_root.apk
+
+# ==========================================
+# 2. BUILD BẢN ROOT MOUNT (Dùng package gốc để mount Magisk)
+# ==========================================
+echo "- Đang tiến hành patch bản Root Mount cho module Magisk..."
 java -jar morphe-cli.jar patch -p patches.mpp --mount -d "GmsCore support" -d "Custom branding" -e "" --out "unaligned_base.apk" youtube.apk
 zip -d unaligned_base.apk "lib/*" || true
 
@@ -43,30 +53,8 @@ zipalign -v -f 4 unaligned_base.apk aligned_base.apk
 apksigner sign --ks "$KS_PATH" --ks-pass pass:"$KS_PASS" --ks-key-alias "$KS_ALIAS" --key-pass pass:"$KS_KEY_PASS" --out base.apk aligned_base.apk
 
 # ==========================================
-# BỔ SUNG: XUẤT THÊM FILE APK NON-ROOT (ĐÃ KÝ KEYSTORE)
+# TẠO MAGISK MODULE ZIP
 # ==========================================
-if [ -n "$KS_PATH" ] && [ -f "$KS_PATH" ]; then
-  echo "- Đang tiến hành build và ký Keystore cho bản Non-Root độc lập..."
-  
-  # Patch bản Non-Root (không dùng cờ --mount)
-  java -jar morphe-cli.jar patch -p patches.mpp \
-    --options options.json \
-    -O "GmsCore support:packageName=com.google.tdc.android.youtube" \
-    -d "Custom branding" \
-    -e "" \
-    --out "unaligned_non_root.apk" youtube.apk
-
-  zipalign -v -f 4 unaligned_non_root.apk aligned_non_root.apk
-  
-  # Ký bằng Keystore
-  apksigner sign --ks "$KS_PATH" --ks-pass pass:"$KS_PASS" --ks-key-alias "$KS_ALIAS" --key-pass pass:"$KS_KEY_PASS" --out "youtube_non_root_${YT_VERSION}.apk" aligned_non_root.apk
-  
-  # Dọn dẹp file tạm của non-root
-  rm -f unaligned_non_root.apk aligned_non_root.apk
-  echo "- Đã xuất thành công file: youtube_non_root_${YT_VERSION}.apk"
-fi
-# ==========================================
-
 BASE_TEMPLATE=$(mktemp -d -p "/tmp")
 mkdir -p "$BASE_TEMPLATE/META-INF/com/google/android" "$BASE_TEMPLATE/stock"
 
@@ -82,8 +70,8 @@ id=${MODULE_ID}
 name=${MODULE_NAME}
 version=${YT_VERSION} (patches ${PATCHES_VER})
 versionCode=$(date +%Y%m%d)
-author=j-hc & Morphe Builder
-description=${MODULE_NAME} Module with Stock APK & j-hc binaries.
+author=TDC Builder
+description=${MODULE_NAME} Module with Stock APK.
 EOF
 
 cat << 'EOF' > "$BASE_TEMPLATE/customize.sh"
@@ -157,4 +145,4 @@ cd "$BASE_TEMPLATE"
 7z a -tzip -mx=9 -mm=Deflate -mfb=258 "$OLDPWD/$ZIP_OUT" ./*
 cd "$OLDPWD"
 
-rm -rf "$BASE_TEMPLATE" bin_temp *.jks unaligned_base.apk aligned_base.apk base.apk options.json
+rm -rf "$BASE_TEMPLATE" bin_temp *.jks unaligned_base.apk aligned_base.apk base.apk options_nonroot.json
