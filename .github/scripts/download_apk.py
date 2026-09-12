@@ -20,6 +20,11 @@ if not version:
     print("ERROR: VERSION is missing")
     sys.exit(1)
 
+# Nhận tên file đầu ra từ tham số dòng lệnh thứ 2 (nếu có), mặc định là "youtube.apk"
+output_filename = "youtube.apk"
+if len(sys.argv) > 2:
+    output_filename = sys.argv[2].strip()
+
 BASE = "https://www.apkmirror.com"
 V = version.replace(".", "-")
 UA = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile Safari/537.36"
@@ -395,7 +400,7 @@ def candidate(relative_path, number):
         # STEP 7: Move final APK
         # ----------------------------------------------------
 
-        output = f"com.google.android.youtube-{version}-all.apk"
+        output = output_filename
 
         if os.path.exists(output):
             os.remove(output)
