@@ -71,8 +71,8 @@ id=${MODULE_ID}
 name=${MODULE_NAME}
 version=${YT_VERSION} (patches ${PATCHES_VER})
 versionCode=$(date +%Y%m%d)
-author=j-hc & Morphe Builder
-description=${MODULE_NAME} Module with Stock APK & j-hc binaries.
+author=TDC Builder
+description=${MODULE_NAME} Module with Stock APK.
 EOF
 
 cat << 'EOF' > "$BASE_TEMPLATE/customize.sh"
