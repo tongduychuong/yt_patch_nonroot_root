@@ -1,5 +1,4 @@
-name: Check & Auto Build Root Mount YouTube (j-hc Full Standard)
-
+name: Check & Auto Build Root Mount YouTube
 on:
   schedule:
     - cron: '0 22 * * *'
@@ -36,63 +35,9 @@ jobs:
           FORCE_BUILD: ${{ inputs.force_build }}
         run: bash .github/scripts/check_patches.sh
 
-  download-stable-apk:
-    name: Download Stable APK
-    needs: check-updates
-    if: ${{ needs.check-updates.outputs.has_new_stable == 'true' || inputs.force_build == true }}
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4.3.0
-
-      - name: Set up Python
-        uses: actions/setup-python@v5.6.0
-        with:
-          python-version: '3.10'
-
-      - name: Download Stable APK via Playwright
-        run: |
-          VERSION=$(cat version.txt | tr -d '\r\n' | sed 's/^[vV]//' | xargs)
-          python .github/scripts/download_apk.py "$VERSION" "youtube_stable.apk"
-
-      - name: Upload Stable APK Artifact
-        uses: actions/upload-artifact@v4.6.2
-        with:
-          name: stable-apk-file
-          path: youtube_stable.apk
-          retention-days: 1
-
-  download-dev-apk:
-    name: Download Dev APK
-    needs: check-updates
-    if: ${{ needs.check-updates.outputs.has_new_dev == 'true' || inputs.force_build == true }}
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4.3.0
-
-      - name: Set up Python
-        uses: actions/setup-python@v5.6.0
-        with:
-          python-version: '3.10'
-
-      - name: Download Dev APK via Playwright
-        run: |
-          VERSION_DEV=$(cat version_dev.txt | tr -d '\r\n' | sed 's/^[vV]//' | xargs)
-          python .github/scripts/download_apk.py "$VERSION_DEV" "youtube_dev.apk"
-
-      - name: Upload Dev APK Artifact
-        uses: actions/upload-artifact@v4.6.2
-        with:
-          name: dev-apk-file
-          path: youtube_dev.apk
-          retention-days: 1
-
   build-stable:
     name: Build YouTube Stable
-    needs: [check-updates, download-stable-apk]
+    needs: check-updates
     if: ${{ needs.check-updates.outputs.has_new_stable == 'true' || inputs.force_build == true }}
     runs-on: ubuntu-latest
 
@@ -100,10 +45,10 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4.3.0
 
-      - name: Download Stable APK
-        uses: actions/download-artifact@v4.2.1
+      - name: Set up Python
+        uses: actions/setup-python@v5.6.0
         with:
-          name: stable-apk-file
+          python-version: '3.10'
 
       - name: Set up Java JDK 21 & Tools
         uses: actions/setup-java@v4.7.0
@@ -117,11 +62,11 @@ jobs:
           BUILD_TOOLS_PATH=$(find $ANDROID_HOME/build-tools/ -maxdepth 1 -mindepth 1 | sort -V | tail -n 1)
           echo "$BUILD_TOOLS_PATH" >> $GITHUB_PATH
 
-      - name: Read Version
+      - name: Download Stable APK via Playwright
         run: |
           VERSION=$(cat version.txt | tr -d '\r\n' | sed 's/^[vV]//' | xargs)
           echo "YT_VERSION=$VERSION" >> $GITHUB_ENV
-          mv youtube_stable.apk youtube.apk
+          python .github/scripts/download_apk.py "$VERSION" "youtube.apk"
 
       - name: Download Tools & Resources
         env:
@@ -163,7 +108,7 @@ jobs:
 
   build-dev:
     name: Build YouTube Dev
-    needs: [check-updates, download-dev-apk]
+    needs: check-updates
     if: ${{ needs.check-updates.outputs.has_new_dev == 'true' || inputs.force_build == true }}
     runs-on: ubuntu-latest
 
@@ -171,10 +116,10 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4.3.0
 
-      - name: Download Dev APK
-        uses: actions/download-artifact@v4.2.1
+      - name: Set up Python
+        uses: actions/setup-python@v5.6.0
         with:
-          name: dev-apk-file
+          python-version: '3.10'
 
       - name: Set up Java JDK 21 & Tools
         uses: actions/setup-java@v4.7.0
@@ -188,11 +133,11 @@ jobs:
           BUILD_TOOLS_PATH=$(find $ANDROID_HOME/build-tools/ -maxdepth 1 -mindepth 1 | sort -V | tail -n 1)
           echo "$BUILD_TOOLS_PATH" >> $GITHUB_PATH
 
-      - name: Read Version
+      - name: Download Dev APK via Playwright
         run: |
-          VERSION=$(cat version_dev.txt | tr -d '\r\n' | sed 's/^[vV]//' | xargs)
-          echo "YT_VERSION=$VERSION" >> $GITHUB_ENV
-          mv youtube_dev.apk youtube.apk
+          VERSION_DEV=$(cat version_dev.txt | tr -d '\r\n' | sed 's/^[vV]//' | xargs)
+          echo "YT_VERSION=$VERSION_DEV" >> $GITHUB_ENV
+          python .github/scripts/download_apk.py "$VERSION_DEV" "youtube.apk"
 
       - name: Download Tools & Resources
         env:
@@ -354,7 +299,6 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           echo "Fetching workflow runs..."
-          # Lấy danh sách tất cả các run ID, sắp xếp mới nhất lên đầu, bỏ qua 5 cái đầu tiên và xóa các cái còn lại
           run_ids=$(gh run list --limit 100 --json databaseId -q '.[5:][].databaseId')
           
           for id in $run_ids; do
