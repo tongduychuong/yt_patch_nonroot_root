@@ -1,4 +1,4 @@
-name: Check & Auto Build Root Mount YouTube 
+name: Check & Auto Build Root Mount YouTube (j-hc Full Standard)
 
 on:
   schedule:
@@ -15,9 +15,35 @@ permissions:
   actions: write
 
 jobs:
-  build-and-release:
-    name: Check, Build & Release YouTube Morphe
+  check-updates:
+    name: Check for New Morphe Patches
     runs-on: ubuntu-latest
+    outputs:
+      has_new_stable: ${{ steps.check_patches.outputs.has_new_stable }}
+      has_new_dev: ${{ steps.check_patches.outputs.has_new_dev }}
+      latest_stable_tag: ${{ steps.check_patches.outputs.latest_stable_tag }}
+      latest_dev_tag: ${{ steps.check_patches.outputs.latest_dev_tag }}
+      should_build: ${{ steps.check_patches.outputs.should_build }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4.3.0
+
+      - name: Check Latest Patch Against Existing Releases
+        id: check_patches
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FORCE_BUILD: ${{ inputs.force_build }}
+        run: bash .github/scripts/check_patches.sh
+
+  build-stable:
+    name: Build YouTube Stable
+    needs: check-updates
+    if: ${{ needs.check-updates.outputs.has_new_stable == 'true' || inputs.force_build == true }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
 
     steps:
       - name: Checkout Repository
@@ -40,135 +66,219 @@ jobs:
           BUILD_TOOLS_PATH=$(find $ANDROID_HOME/build-tools/ -maxdepth 1 -mindepth 1 | sort -V | tail -n 1)
           echo "$BUILD_TOOLS_PATH" >> $GITHUB_PATH
 
-      - name: Check for New Patches
-        id: check_patches
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          FORCE_BUILD: ${{ inputs.force_build }}
+      - name: Download Stable APK via Playwright
         run: |
-          # Chạy script check và lưu kết quả ra biến môi trường chung
-          bash .github/scripts/check_patches.sh
-          
-          # Đọc các output từ file ghi tạm của GitHub (nếu script của bạn ghi vào $GITHUB_OUTPUT)
-          # Hoặc gán trực tiếp để dùng trong job
-          echo "FORCE_BUILD=${{ inputs.force_build }}" >> $GITHUB_ENV
-
-      # ==========================================
-      # 1. BUILD STABLE (Nếu có bản mới hoặc Force)
-      # ==========================================
-      - name: Build YouTube Stable
-        if: ${{ env.HAS_NEW_STABLE == 'true' || inputs.force_build == true }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "=== BẮT ĐẦU BUILD STABLE ==="
           VERSION=$(cat version.txt | tr -d '\r\n' | sed 's/^[vV]//' | xargs)
           echo "YT_VERSION=$VERSION" >> $GITHUB_ENV
-          
-          # Tải APK Stable
-          python .github/scripts/download_apk.py "$VERSION" "youtube_stable.apk"
-          mv youtube_stable.apk youtube.apk
+          python .github/scripts/download_apk.py "$VERSION" "youtube.apk"
 
-          # Tải công cụ & Patches
+      - name: Download Tools & Resources
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
           gh release download --repo MorpheApp/morphe-cli --pattern "*.jar" --clobber
           mv $(ls *.jar | head -n 1) morphe-cli.jar
 
-          PATCH_TAG="${{ env.LATEST_STABLE_TAG }}"
+          PATCH_TAG="${{ needs.check-updates.outputs.latest_stable_tag }}"
+          echo "PATCH_TAG=$PATCH_TAG" >> $GITHUB_ENV
+
           gh release download "$PATCH_TAG" --repo MorpheApp/morphe-patches --pattern "*.mpp" --clobber
           mv $(ls *.mpp | head -n 1) patches.mpp
 
           mkdir -p bin_temp
           curl -sL https://github.com/j-hc/revanced-magisk-module/archive/refs/heads/main.tar.gz | tar -xz -C bin_temp --strip-components=1 || true
 
-          # Thiết lập KeyStore & Build
-          bash .github/scripts/setup_keystore.sh
-          bash .github/scripts/build_module.sh stable
+      - name: Restore or Generate KeyStore
+        id: ks_setup
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: bash .github/scripts/setup_keystore.sh
 
-          # Đổi tên file gọn gàng để gom vào release
+      - name: Build & Package Module (Full j-hc Method)
+        run: bash .github/scripts/build_module.sh stable
+
+      - name: Prepare Release Files
+        run: |
           mkdir -p release_files
-          mv youtube_*.apk release_files/ 2>/dev/null || true
-          mv youtube_*_Magisk.zip release_files/ 2>/dev/null || true
-          rm -f youtube.apk morphe-cli.jar patches.mpp
+          mv youtube_${{ env.YT_VERSION }}.apk release_files/
+          mv youtube_root_mount_${{ env.YT_VERSION }}_Magisk.zip release_files/
+          
+          STABLE_TAG="${{ needs.check-updates.outputs.latest_stable_tag }}"
+          echo "## 🚀 Morphe YouTube Stable Release" > release_files/changelog.txt
+          echo "" >> release_files/changelog.txt
+          echo "📌 **YouTube Version:** \`${{ env.YT_VERSION }}\`" >> release_files/changelog.txt
+          if [ -n "$STABLE_TAG" ] && [ "$STABLE_TAG" != "null" ]; then
+            echo "📌 **Stable Patch Version:** [$STABLE_TAG](https://github.com/MorpheApp/morphe-patches/releases/tag/$STABLE_TAG)" >> release_files/changelog.txt
+          fi
+          echo "" >> release_files/changelog.txt
+          echo "---" >> release_files/changelog.txt
+          echo "📦 **Yêu cầu MicroG (dành cho bản APK Non-Root):** [MicroG-RE Releases](https://github.com/MorpheApp/MicroG-RE/releases)" >> release_files/changelog.txt
 
-      # ==========================================
-      # 2. BUILD DEV (Nếu có bản mới hoặc Force)
-      # ==========================================
-      - name: Build YouTube Dev
-        if: ${{ env.HAS_NEW_DEV == 'true' || inputs.force_build == true }}
+          echo "RELEASE_TAG=stable-${{ env.YT_VERSION }}-$(date +'%Y%m%d-%H%M')" >> $GITHUB_ENV
+
+      - name: Create Release & Upload Files
+        uses: softprops/action-gh-release@v2.2.1
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: "YouTube Stable v${{ env.YT_VERSION }}"
+          body_path: release_files/changelog.txt
+          files: |
+            release_files/*.apk
+            release_files/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Send Telegram Notification (Stable)
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_TO: ${{ secrets.TELEGRAM_CHAT_ID }}
+        if: ${{ env.TELEGRAM_TOKEN != '' && env.TELEGRAM_TO != '' }}
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          format: markdown
+          message: |
+            🎉 *YouTube Stable Morphe Build Thành Công!*
+            
+            📌 *Phiên bản YT:* `${{ env.YT_VERSION }}`
+            🏷 *Release Tag:* `${{ env.RELEASE_TAG }}`
+            📌 *Stable Patch:* [${{ needs.check-updates.outputs.latest_stable_tag }}](https://github.com/MorpheApp/morphe-patches/releases/tag/${{ needs.check-updates.outputs.latest_stable_tag }})
+            
+            🔗 [Xem Release & Tải File](https://github.com/${{ github.repository }}/releases/tag/${{ env.RELEASE_TAG }})
+            🛡 [Tải MicroG-RE](https://github.com/MorpheApp/MicroG-RE/releases)
+
+  build-dev:
+    name: Build YouTube Dev
+    needs: check-updates
+    if: ${{ needs.check-updates.outputs.has_new_dev == 'true' || inputs.force_build == true }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4.3.0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5.6.0
+        with:
+          python-version: '3.10'
+
+      - name: Set up Java JDK 21 & Tools
+        uses: actions/setup-java@v4.7.0
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      - name: Install p7zip & Zip
+        run: |
+          sudo apt-get update && sudo apt-get install -y p7zip-full zip
+          BUILD_TOOLS_PATH=$(find $ANDROID_HOME/build-tools/ -maxdepth 1 -mindepth 1 | sort -V | tail -n 1)
+          echo "$BUILD_TOOLS_PATH" >> $GITHUB_PATH
+
+      - name: Download Dev APK via Playwright
+        run: |
+          VERSION_DEV=$(cat version_dev.txt | tr -d '\r\n' | sed 's/^[vV]//' | xargs)
+          echo "YT_VERSION=$VERSION_DEV" >> $GITHUB_ENV
+          python .github/scripts/download_apk.py "$VERSION_DEV" "youtube.apk"
+
+      - name: Download Tools & Resources
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "=== BẮT ĐẦU BUILD DEV ==="
-          VERSION_DEV=$(cat version_dev.txt | tr -d '\r\n' | sed 's/^[vV]//' | xargs)
-          echo "YT_DEV_VERSION=$VERSION_DEV" >> $GITHUB_ENV
-          
-          # Tải APK Dev
-          python .github/scripts/download_apk.py "$VERSION_DEV" "youtube_dev.apk"
-          mv youtube_dev.apk youtube.apk
-
-          # Tải công cụ & Patches
           gh release download --repo MorpheApp/morphe-cli --pattern "*.jar" --clobber
           mv $(ls *.jar | head -n 1) morphe-cli.jar
 
-          PATCH_TAG_DEV="${{ env.LATEST_DEV_TAG }}"
-          gh release download "$PATCH_TAG_DEV" --repo MorpheApp/morphe-patches --pattern "*.mpp" --clobber
+          PATCH_TAG="${{ needs.check-updates.outputs.latest_dev_tag }}"
+          echo "PATCH_TAG=$PATCH_TAG" >> $GITHUB_ENV
+
+          gh release download "$PATCH_TAG" --repo MorpheApp/morphe-patches --pattern "*.mpp" --clobber
           mv $(ls *.mpp | head -n 1) patches.mpp
 
           mkdir -p bin_temp
           curl -sL https://github.com/j-hc/revanced-magisk-module/archive/refs/heads/main.tar.gz | tar -xz -C bin_temp --strip-components=1 || true
 
-          # Thiết lập KeyStore & Build
-          bash .github/scripts/setup_keystore.sh
-          bash .github/scripts/build_module.sh dev
+      - name: Restore or Generate KeyStore
+        id: ks_setup_dev
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: bash .github/scripts/setup_keystore.sh
 
-          # Đổi tên file gom vào release
+      - name: Build & Package Dev Module (Full j-hc Method)
+        run: bash .github/scripts/build_module.sh dev
+
+      - name: Prepare Release Files
+        run: |
           mkdir -p release_files
-          mv youtube_dev_*.apk release_files/ 2>/dev/null || true
-          mv youtube_dev_*_Magisk.zip release_files/ 2>/dev/null || true
-          rm -f youtube.apk morphe-cli.jar patches.mpp
+          mv youtube_dev_${{ env.YT_VERSION }}.apk release_files/
+          mv youtube_dev_root_mount_${{ env.YT_VERSION }}_Magisk.zip release_files/
+          
+          DEV_TAG="${{ needs.check-updates.outputs.latest_dev_tag }}"
+          echo "## 🚀 Morphe YouTube Dev Release" > release_files/changelog.txt
+          echo "" >> release_files/changelog.txt
+          echo "🧪 **YouTube Dev Version:** \`${{ env.YT_VERSION }}\`" >> release_files/changelog.txt
+          if [ -n "$DEV_TAG" ] && [ "$DEV_TAG" != "null" ]; then
+            echo "🧪 **Dev Patch Version:** [$DEV_TAG](https://github.com/MorpheApp/morphe-patches/releases/tag/$DEV_TAG)" >> release_files/changelog.txt
+          fi
+          echo "" >> release_files/changelog.txt
+          echo "---" >> release_files/changelog.txt
+          echo "📦 **Yêu cầu MicroG (dành cho bản APK Non-Root):** [MicroG-RE Releases](https://github.com/MorpheApp/MicroG-RE/releases)" >> release_files/changelog.txt
 
-      # ==========================================
-      # 3. TẠO RELEASE & DỌN DẸP
-      # ==========================================
-      - name: Create Combined Release & Cleanup
-        if: always() && hashFiles('release_files/*') != ''
+          echo "RELEASE_TAG=dev-${{ env.YT_VERSION }}-$(date +'%Y%m%d-%H%M')" >> $GITHUB_ENV
+
+      - name: Create Release & Upload Files
+        uses: softprops/action-gh-release@v2.2.1
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: "YouTube Dev v${{ env.YT_VERSION }}"
+          body_path: release_files/changelog.txt
+          files: |
+            release_files/*.apk
+            release_files/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          cd release_files
-          
-          STABLE_TAG="${{ env.LATEST_STABLE_TAG }}"
-          DEV_TAG="${{ env.LATEST_DEV_TAG }}"
 
-          echo "## 🚀 Morphe YouTube Release Updates" > combined_changelog.txt
-          echo "" >> combined_changelog.txt
-          
-          if [ -n "$STABLE_TAG" ] && [ "$STABLE_TAG" != "null" ]; then
-            echo "📌 **Stable Patch Version:** [$STABLE_TAG](https://github.com/MorpheApp/morphe-patches/releases/tag/$STABLE_TAG)" >> combined_changelog.txt
-          fi
+      - name: Send Telegram Notification (Dev)
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_TO: ${{ secrets.TELEGRAM_CHAT_ID }}
+        if: ${{ env.TELEGRAM_TOKEN != '' && env.TELEGRAM_TO != '' }}
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          format: markdown
+          message: |
+            🎉 *YouTube Dev Morphe Build Thành Công!*
+            
+            🧪 *Phiên bản YT Dev:* `${{ env.YT_VERSION }}`
+            🏷 *Release Tag:* `${{ env.RELEASE_TAG }}`
+            🧪 *Dev Patch:* [${{ needs.check-updates.outputs.latest_dev_tag }}](https://github.com/MorpheApp/morphe-patches/releases/tag/${{ needs.check-updates.outputs.latest_dev_tag }})
+            
+            🔗 [Xem Release & Tải File](https://github.com/${{ github.repository }}/releases/tag/${{ env.RELEASE_TAG }})
+            🛡 [Tải MicroG-RE](https://github.com/MorpheApp/MicroG-RE/releases)
 
-          if [ -n "$DEV_TAG" ] && [ "$DEV_TAG" != "null" ]; then
-            echo "🧪 **Dev Patch Version:** [$DEV_TAG](https://github.com/MorpheApp/morphe-patches/releases/tag/$DEV_TAG)" >> combined_changelog.txt
-          fi
+  cleanup-releases:
+    name: Cleanup Old Releases and Tags
+    needs: [build-stable, build-dev]
+    if: ${{ always() && (needs.build-stable.result == 'success' || needs.build-dev.result == 'success') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
 
-          echo "" >> combined_changelog.txt
-          echo "---" >> combined_changelog.txt
-          echo "📦 **Yêu cầu MicroG (dành cho bản APK Non-Root):** [MicroG-RE Releases](https://github.com/MorpheApp/MicroG-RE/releases)" >> combined_changelog.txt
-
-          TAG_NAME="auto-build-$(date +'%Y.%m.%d-%H%M')"
-          echo "RELEASE_TAG=$TAG_NAME" >> $GITHUB_ENV
-          cd ..
-
-          # Tạo GitHub Release
-          gh release create "$TAG_NAME" \
-            --title "YouTube Morphe Update ($TAG_NAME)" \
-            --notes-file release_files/combined_changelog.txt \
-            release_files/* || true
-
-      - name: Delete Artifacts & Local Cleanup
-        run: bash .github/scripts/cleanup_artifacts.sh || true
-
-      - name: Cleanup Old Releases and Tags
+    steps:
+      - name: Cleanup old releases and tags
         env:
           GH_TOKEN: ${{ secrets.CUSTOM_PAT || github.token }}
         run: |
@@ -184,32 +294,26 @@ jobs:
               curl -s -X DELETE "${AUTH[@]}" "$API/git/refs/tags/$tag" >/dev/null || true
             done
 
-      - name: Send Telegram Notification
-        env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_TO: ${{ secrets.TELEGRAM_CHAT_ID }}
-        if: ${{ env.TELEGRAM_TOKEN != '' && env.TELEGRAM_TO != '' && env.RELEASE_TAG != '' }}
-        uses: appleboy/telegram-action@master
-        with:
-          to: ${{ secrets.TELEGRAM_CHAT_ID }}
-          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          format: markdown
-          message: |
-            🎉 *YouTube Morphe Build Thành Công!*
-            
-            🏷 *Release Tag:* `${{ env.RELEASE_TAG }}`
-            
-            🔗 [Xem Release & Tải File](https://github.com/${{ github.repository }}/releases/tag/${{ env.RELEASE_TAG }})
-            🛡 [Tải MicroG-RE](https://github.com/MorpheApp/MicroG-RE/releases)
+  cleanup-workflows:
+    name: Cleanup Old Workflow Runs
+    needs: [cleanup-releases]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
 
-      - name: Cleanup Old Workflow Runs
-        if: always()
+    steps:
+      - name: Delete excess workflow runs
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           echo "Fetching workflow runs..."
           run_ids=$(gh run list --limit 100 --json databaseId -q '.[5:][].databaseId')
+          
           for id in $run_ids; do
+            echo "Deleting run ID: $id"
             gh run delete "$id" || true
           done
           echo "Cleanup completed!"
