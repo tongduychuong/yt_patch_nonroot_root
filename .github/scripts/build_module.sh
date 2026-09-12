@@ -61,8 +61,9 @@ mkdir -p "$BASE_TEMPLATE/META-INF/com/google/android" "$BASE_TEMPLATE/stock"
 cp -f base.apk "$BASE_TEMPLATE/base.apk"
 cp -f youtube.apk "$BASE_TEMPLATE/stock/base.apk"
 
-if [ -d "bin_temp/bin" ]; then
-  cp -r bin_temp/bin "$BASE_TEMPLATE/"
+# Đưa thư mục bin (đã được trích xuất sẵn ở root) vào template module
+if [ -d "bin" ]; then
+  cp -r bin "$BASE_TEMPLATE/"
 fi
 
 cat << EOF > "$BASE_TEMPLATE/module.prop"
@@ -70,8 +71,8 @@ id=${MODULE_ID}
 name=${MODULE_NAME}
 version=${YT_VERSION} (patches ${PATCHES_VER})
 versionCode=$(date +%Y%m%d)
-author=TDC Builder
-description=${MODULE_NAME} Module with Stock APK.
+author=j-hc & Morphe Builder
+description=${MODULE_NAME} Module with Stock APK & j-hc binaries.
 EOF
 
 cat << 'EOF' > "$BASE_TEMPLATE/customize.sh"
@@ -145,4 +146,4 @@ cd "$BASE_TEMPLATE"
 7z a -tzip -mx=9 -mm=Deflate -mfb=258 "$OLDPWD/$ZIP_OUT" ./*
 cd "$OLDPWD"
 
-rm -rf "$BASE_TEMPLATE" bin_temp *.jks unaligned_base.apk aligned_base.apk base.apk options_nonroot.json
+rm -rf "$BASE_TEMPLATE" bin bin_temp *.jks unaligned_base.apk aligned_base.apk base.apk options_nonroot.json
