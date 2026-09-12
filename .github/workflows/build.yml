@@ -1,4 +1,4 @@
-name: Check & Auto Build Root Mount YouTube (j-hc Full Standard)
+name: Check & Auto Build Root Mount YouTube 
 
 on:
   schedule:
@@ -66,7 +66,7 @@ jobs:
           BUILD_TOOLS_PATH=$(find $ANDROID_HOME/build-tools/ -maxdepth 1 -mindepth 1 | sort -V | tail -n 1)
           echo "$BUILD_TOOLS_PATH" >> $GITHUB_PATH
 
-      - name: Download Stable APK via Playwright
+      - name: Download Stable APK
         run: |
           VERSION=$(cat version.txt | tr -d '\r\n' | sed 's/^[vV]//' | xargs)
           echo "YT_VERSION=$VERSION" >> $GITHUB_ENV
@@ -182,7 +182,7 @@ jobs:
           BUILD_TOOLS_PATH=$(find $ANDROID_HOME/build-tools/ -maxdepth 1 -mindepth 1 | sort -V | tail -n 1)
           echo "$BUILD_TOOLS_PATH" >> $GITHUB_PATH
 
-      - name: Download Dev APK via Playwright
+      - name: Download Dev APK
         run: |
           VERSION_DEV=$(cat version_dev.txt | tr -d '\r\n' | sed 's/^[vV]//' | xargs)
           echo "YT_VERSION=$VERSION_DEV" >> $GITHUB_ENV
