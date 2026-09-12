@@ -86,7 +86,10 @@ jobs:
           mv $(ls *.mpp | head -n 1) patches.mpp
 
           mkdir -p bin_temp
-          curl -sL https://github.com/j-hc/revanced-magisk-module/archive/refs/heads/main.tar.gz | tar -xz -C bin_temp --strip-components=1 || true
+          curl -sL https://github.com/j-hc/revanced-magisk-module/archive/refs/heads/main.tar.gz | tar -xz -C bin_temp --strip-components=1 || true          
+          if [ -d "bin_temp/module/bin" ]; then
+            cp -r bin_temp/module/bin ./bin
+          fi
 
       - name: Restore or Generate KeyStore
         id: ks_setup
@@ -98,7 +101,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: bash .github/scripts/setup_keystore.sh
 
-      - name: Build & Package Module (Full j-hc Method)
+      - name: Build & Package Module
         run: bash .github/scripts/build_module.sh stable
 
       - name: Prepare Release Files
@@ -214,7 +217,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: bash .github/scripts/setup_keystore.sh
 
-      - name: Build & Package Dev Module (Full j-hc Method)
+      - name: Build & Package Dev Module
         run: bash .github/scripts/build_module.sh dev
 
       - name: Prepare Release Files
