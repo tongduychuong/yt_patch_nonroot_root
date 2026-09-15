@@ -12,61 +12,64 @@ echo "============================================================"
 echo "              MORPHE PATCH UPDATE CHECK"
 echo "============================================================"
 
+# Fetch the complete release list first. Do not pipe gh/jq into
+# head/awk that exits early: that causes SIGPIPE / exit 141.
 PATCH_RELEASES_JSON="$(
   gh api "repos/${PATCH_REPO}/releases?per_page=100" --paginate
 )"
 
-LATEST_STABLE_TAG="$(
+# Latest stable: gh API returns releases newest first.
+mapfile -t STABLE_PATCHES < <(
   printf '%s' "$PATCH_RELEASES_JSON" |
-    jq -r '
-      .[]
-      | select(.draft == false)
-      | select(.prerelease == false)
-      | .tag_name
-    ' |
-    awk 'NF { print; exit }'
-)"
+    jq -r '.[] | select(.draft == false) | select(.prerelease == false) | .tag_name'
+)
 
-if [ -z "$LATEST_STABLE_TAG" ]; then
+if [ "${#STABLE_PATCHES[@]}" -eq 0 ]; then
   echo "ERROR: Cannot find latest Stable Morphe patch."
   exit 1
 fi
 
-echo "Latest Stable Patch: $LATEST_STABLE_TAG"
+LATEST_STABLE_TAG="${STABLE_PATCHES[0]}"
+echo "Latest Stable Patch: ${LATEST_STABLE_TAG}"
 
-LATEST_DEV_TAG="$(
+# Latest dev.
+mapfile -t DEV_PATCHES < <(
   printf '%s' "$PATCH_RELEASES_JSON" |
-    jq -r '
-      .[]
-      | select(.draft == false)
-      | select(.prerelease == true)
-      | .tag_name
-    ' |
-    awk 'NF { print; exit }'
-)"
+    jq -r '.[] | select(.draft == false) | select(.prerelease == true) | .tag_name'
+)
 
+LATEST_DEV_TAG=""
+
+if [ "${#DEV_PATCHES[@]}" -gt 0 ]; then
+  LATEST_DEV_TAG="${DEV_PATCHES[0]}"
+fi
+
+# Fallback for Dev releases not marked as prerelease.
 if [ -z "$LATEST_DEV_TAG" ]; then
-  echo "WARNING: No prerelease Dev patch found."
-  echo "Trying Dev/Beta/Alpha tag detection..."
-
-  LATEST_DEV_TAG="$(
+  mapfile -t DEV_FALLBACK_PATCHES < <(
     printf '%s' "$PATCH_RELEASES_JSON" |
-      jq -r '
-        .[]
-        | select(.draft == false)
-        | .tag_name
-      ' |
-      grep -Ei '(^|[-_.])(dev|beta|alpha|pre)([-_.]|$)' |
-      awk 'NF { print; exit }' ||
-      true
-  )"
+      jq -r '.[] | select(.draft == false) | .tag_name' |
+      grep -Ei '(^|[-_.])(dev|beta|alpha|pre)([-_.]|$)' || true
+  )
+
+  if [ "${#DEV_FALLBACK_PATCHES[@]}" -gt 0 ]; then
+    LATEST_DEV_TAG="${DEV_FALLBACK_PATCHES[0]}"
+  fi
 fi
 
 echo "Latest Dev Patch: ${LATEST_DEV_TAG:-NONE}"
 
+# Fetch our releases completely.
+echo
+echo "Loading existing build releases..."
+
 BUILD_RELEASES_JSON="$(
   gh api "repos/${BUILD_REPO}/releases?per_page=100" --paginate
 )"
+
+if [ -z "$BUILD_RELEASES_JSON" ]; then
+  BUILD_RELEASES_JSON="[]"
+fi
 
 get_latest_release() {
   local PREFIX="$1"
@@ -86,19 +89,26 @@ get_latest_release() {
 
 extract_patch_tag() {
   local BODY="$1"
+  local RESULT=""
 
-  printf '%s\n' "$BODY" |
-    grep -E \
-      '(Stable Patch Version|Dev Patch Version|Stable Patch|Dev Patch)' |
-    grep -Eo '\[[^][]+\]' |
-    awk '
-      match($0, /^\[.*\]$/) {
-        print substr($0, 2, length($0) - 2)
-        exit
-      }
-    ' ||
-    true
+  # Read all matching lines before returning, avoiding early pipe
+  # termination and therefore avoiding SIGPIPE.
+  while IFS= read -r LINE; do
+    [ -z "$RESULT" ] || continue
+
+    if [[ "$LINE" =~ (Stable\ Patch\ Version|Dev\ Patch\ Version|Stable\ Patch|Dev\ Patch) ]]; then
+      if [[ "$LINE" =~ \[([^]]+)\] ]]; then
+        RESULT="${BASH_REMATCH[1]}"
+      fi
+    fi
+  done <<< "$BODY"
+
+  printf '%s' "$RESULT"
 }
+
+# ============================================================
+# CHECK STABLE
+# ============================================================
 
 echo
 echo "============================================================"
@@ -108,10 +118,13 @@ echo "============================================================"
 STABLE_RELEASE="$(get_latest_release "stable")"
 
 if [ "$STABLE_RELEASE" = "null" ] || [ -z "$STABLE_RELEASE" ]; then
+
   echo "No stable-* release found."
   echo "=> BUILD STABLE"
   HAS_NEW_STABLE="true"
+
 else
+
   STABLE_RELEASE_TAG="$(printf '%s' "$STABLE_RELEASE" | jq -r '.tag_name // empty')"
   STABLE_RELEASE_BODY="$(printf '%s' "$STABLE_RELEASE" | jq -r '.body // empty')"
   LAST_STABLE_PATCH="$(extract_patch_tag "$STABLE_RELEASE_BODY")"
@@ -130,23 +143,33 @@ else
   fi
 fi
 
+# ============================================================
+# CHECK DEV
+# ============================================================
+
 echo
 echo "============================================================"
 echo "CHECK DEV"
 echo "============================================================"
 
 if [ -z "$LATEST_DEV_TAG" ]; then
+
   echo "No Dev patch found."
   echo "=> SKIP DEV"
   HAS_NEW_DEV="false"
+
 else
+
   DEV_RELEASE="$(get_latest_release "dev")"
 
   if [ "$DEV_RELEASE" = "null" ] || [ -z "$DEV_RELEASE" ]; then
+
     echo "No dev-* release found."
     echo "=> BUILD DEV"
     HAS_NEW_DEV="true"
+
   else
+
     DEV_RELEASE_TAG="$(printf '%s' "$DEV_RELEASE" | jq -r '.tag_name // empty')"
     DEV_RELEASE_BODY="$(printf '%s' "$DEV_RELEASE" | jq -r '.body // empty')"
     LAST_DEV_PATCH="$(extract_patch_tag "$DEV_RELEASE_BODY")"
@@ -166,9 +189,17 @@ else
   fi
 fi
 
+# ============================================================
+# FORCE BUILD
+# ============================================================
+
 if [ "$FORCE_BUILD" = "true" ]; then
   echo
+  echo "============================================================"
   echo "FORCE BUILD ENABLED"
+  echo "Ignoring patch check."
+  echo "============================================================"
+
   HAS_NEW_STABLE="true"
   HAS_NEW_DEV="true"
 fi
