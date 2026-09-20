@@ -9,7 +9,7 @@ HAS_NEW_STABLE="false"
 HAS_NEW_DEV="false"
 
 echo "============================================================"
-echo "              MORPHE PATCH UPDATE CHECK"
+echo "            MORPHE PATCH UPDATE CHECK"
 echo "============================================================"
 
 # Fetch the complete release list first. Do not pipe gh/jq into
@@ -21,7 +21,8 @@ PATCH_RELEASES_JSON="$(
 # Latest stable: gh API returns releases newest first.
 mapfile -t STABLE_PATCHES < <(
   printf '%s' "$PATCH_RELEASES_JSON" |
-    jq -r '.[] | select(.draft == false) | select(.prerelease == false) | .tag_name'
+    jq -r '.[] | select(.draft == false) | select(.prerelease == false) | .tag_name' |
+    sort -rV
 )
 
 if [ "${#STABLE_PATCHES[@]}" -eq 0 ]; then
@@ -32,10 +33,11 @@ fi
 LATEST_STABLE_TAG="${STABLE_PATCHES[0]}"
 echo "Latest Stable Patch: ${LATEST_STABLE_TAG}"
 
-# Latest dev.
+# Latest dev (with sort -rV to ensure correct semantic versioning).
 mapfile -t DEV_PATCHES < <(
   printf '%s' "$PATCH_RELEASES_JSON" |
-    jq -r '.[] | select(.draft == false) | select(.prerelease == true) | .tag_name'
+    jq -r '.[] | select(.draft == false) | select(.prerelease == true) | .tag_name' |
+    sort -rV
 )
 
 LATEST_DEV_TAG=""
@@ -49,7 +51,8 @@ if [ -z "$LATEST_DEV_TAG" ]; then
   mapfile -t DEV_FALLBACK_PATCHES < <(
     printf '%s' "$PATCH_RELEASES_JSON" |
       jq -r '.[] | select(.draft == false) | .tag_name' |
-      grep -Ei '(^|[-_.])(dev|beta|alpha|pre)([-_.]|$)' || true
+      grep -Ei '(^|[-_.])(dev|beta|alpha|pre)([-_.]|$)' |
+      sort -rV || true
   )
 
   if [ "${#DEV_FALLBACK_PATCHES[@]}" -gt 0 ]; then
