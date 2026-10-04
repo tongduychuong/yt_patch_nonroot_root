@@ -97,15 +97,18 @@ if [ -d "$BIN_DIR" ]; then
 fi
 
 PKG_NAME="com.google.android.youtube"
-TARGET_APK=$(pm path $PKG_NAME | head -n 1 | cut -d':' -f2)
 
-if [ -z "$TARGET_APK" ]; then
-  if [ -f "$MODPATH/stock/base.apk" ]; then
-    ui_print "- Installing stock YouTube APK..."
-    pm install -r "$MODPATH/stock/base.apk" >/dev/null 2>&1
-  fi
+# Bắt buộc gỡ cài đặt YouTube cũ trước
+ui_print "- Đang gỡ cài đặt YouTube cũ..."
+pm uninstall $PKG_NAME >/dev/null 2>&1 || true
+
+# Cài đặt stock YouTube mới từ thư mục stock của module
+if [ -f "$MODPATH/stock/base.apk" ]; then
+  ui_print "- Đang cài đặt stock YouTube mới từ module..."
+  pm install -r "$MODPATH/stock/base.apk" >/dev/null 2>&1
+  ui_print "- Đã cài đặt thành công stock YouTube!"
 else
-  ui_print "- Stock YouTube found at: $TARGET_PKG"
+  ui_print "! Không tìm thấy file stock base.apk trong module!"
 fi
 
 set_perm_recursive "$MODPATH" 0 0 0755 0644
