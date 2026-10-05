@@ -97,18 +97,43 @@ if [ -d "$BIN_DIR" ]; then
 fi
 
 PKG_NAME="com.google.android.youtube"
+DATA_DIR="/data/user/0/$PKG_NAME"
+BACKUP_DIR="/dev/yt_backup"
 
-# Bắt buộc gỡ cài đặt YouTube cũ trước
+# 1. Sao lưu settings/dữ liệu cũ nếu tồn tại
+if [ -d "$DATA_DIR" ]; then
+  ui_print "- Đang sao lưu cài đặt và dữ liệu cũ của YouTube..."
+  rm -rf "$BACKUP_DIR"
+  mkdir -p "$BACKUP_DIR"
+  cp -a "$DATA_DIR/." "$BACKUP_DIR/" 2>/dev/null || true
+fi
+
+# 2. Gỡ cài đặt YouTube cũ
 ui_print "- Đang gỡ cài đặt YouTube cũ..."
 pm uninstall $PKG_NAME >/dev/null 2>&1 || true
 
-# Cài đặt stock YouTube mới từ thư mục stock của module
+# 3. Cài đặt stock YouTube mới từ module
 if [ -f "$MODPATH/stock/base.apk" ]; then
   ui_print "- Đang cài đặt stock YouTube mới từ module..."
   pm install -r "$MODPATH/stock/base.apk" >/dev/null 2>&1
   ui_print "- Đã cài đặt thành công stock YouTube!"
 else
   ui_print "! Không tìm thấy file stock base.apk trong module!"
+fi
+
+# 4. Khôi phục lại settings/dữ liệu cũ
+if [ -d "$BACKUP_DIR" ] && [ -d "$DATA_DIR" ]; then
+  ui_print "- Đang khôi phục lại cài đặt cũ..."
+  cp -a "$BACKUP_DIR/." "$DATA_DIR/" 2>/dev/null || true
+  
+  # Khôi phục đúng Owner/Group và permissions cho thư mục data của app (thường UID là 10xxx cho app)
+  # Lấy UID/GID thực tế của package sau khi cài lại
+  UID_GID=$(stat -c "%u:%g" "$DATA_DIR" 2>/dev/null || echo "1000:1000")
+  chown -R $UID_GID "$DATA_DIR" 2>/dev/null || true
+  chmod -R 700 "$DATA_DIR" 2>/dev/null || true
+  
+  rm -rf "$BACKUP_DIR"
+  ui_print "- Khôi phục cài đặt cũ hoàn tất!"
 fi
 
 set_perm_recursive "$MODPATH" 0 0 0755 0644
