@@ -179,4 +179,269 @@ jobs:
           {
             "version": "${YT_VERSION}",
             "versionCode": ${VERSION_CODE},
-            "zipUrl": "
+            "zipUrl": "https://github.com/tongduychuong/yt_patch_nonroot_root/releases/download/${RELEASE_TAG}/youtube_root_mount_${YT_VERSION}_Magisk.zip",
+            "changelog": "https://raw.githubusercontent.com/tongduychuong/yt_patch_nonroot_root/main/update/changelog.md"
+          }
+          EOF
+
+          cat <<EOF > update/changelog.md
+          ## 🚀 Morphe YouTube Stable Release v${YT_VERSION}
+
+          📌 **YouTube Version:** \`${YT_VERSION}\`
+          📌 **Stable Patch:** \`${{ needs.check-updates.outputs.latest_stable_tag }}\`
+          📅 **Build Date:** $(date +'%Y-%m-%d %H:%M:%S')
+
+          ---
+          - Tự động cập nhật module Magisk Root Mount qua Morphe CLI.
+          EOF
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add update/update.json update/changelog.md
+          git commit -m "chore(stable): update update.json and changelog for v${YT_VERSION}" || echo "No changes to commit"
+          git push
+
+      - name: Send Telegram Notification (Stable)
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_TO: ${{ secrets.TELEGRAM_CHAT_ID }}
+        if: ${{ env.TELEGRAM_TOKEN != '' && env.TELEGRAM_TO != '' }}
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          format: markdown
+          message: |
+            🎉 *YouTube Stable Morphe Build Thành Công!*
+
+            📌 *Phiên bản YT:* `${{ env.YT_VERSION }}`
+            🏷 *Release Tag:* `${{ env.RELEASE_TAG }}`
+            📌 *Stable Patch:* `${{ needs.check-updates.outputs.latest_stable_tag }}`
+
+            🔗 [Xem Release & Tải File](https://github.com/${{ github.repository }}/releases/tag/${{ env.RELEASE_TAG }})
+
+  build-dev:
+    name: Build YouTube Dev
+    needs: check-updates
+    if: ${{ needs.check-updates.outputs.has_new_dev == 'true' || inputs.force_build == true }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4.3.0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5.6.0
+        with:
+          python-version: '3.10'
+
+      - name: Set up Java JDK 21 & Tools
+        uses: actions/setup-java@v4.7.0
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      - name: Install p7zip & Zip
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full zip jq
+          BUILD_TOOLS_PATH=$(find "$ANDROID_HOME/build-tools/" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -n 1)
+          echo "$BUILD_TOOLS_PATH" >> "$GITHUB_PATH"
+
+      - name: Download Dev APK
+        run: |
+          VERSION_DEV=$(tr -d '\r\n' < version_dev.txt | sed 's/^[vV]//' | xargs)
+          if [ -z "$VERSION_DEV" ]; then
+            echo "ERROR: version_dev.txt is empty."
+            exit 1
+          fi
+          echo "YT_VERSION=$VERSION_DEV" >> "$GITHUB_ENV"
+          python .github/scripts/download_apk.py "$VERSION_DEV" "youtube.apk"
+
+      - name: Download Tools & Resources
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo MorpheApp/morphe-cli --pattern "*.jar" --clobber
+          JAR_FILE=$(find . -maxdepth 1 -type f -name "*.jar" | head -n 1)
+          if [ -z "$JAR_FILE" ]; then
+            echo "ERROR: Morphe CLI JAR not found."
+            exit 1
+          fi
+          mv "$JAR_FILE" morphe-cli.jar
+
+          PATCH_TAG="${{ needs.check-updates.outputs.latest_dev_tag }}"
+          if [ -z "$PATCH_TAG" ] \vert{}\vert{} [ "$PATCH_TAG" = "null" ]; then
+            echo "ERROR: Dev patch tag is empty."
+            exit 1
+          fi
+          echo "PATCH_TAG=$PATCH_TAG" >> "$GITHUB_ENV"
+
+          gh release download "$PATCH_TAG" --repo MorpheApp/morphe-patches --pattern "*.mpp" --clobber
+          MPP_FILE=$(find . -maxdepth 1 -type f -name "*.mpp" | head -n 1)
+          if [ -z "$MPP_FILE" ]; then
+            echo "ERROR: Dev .mpp not found."
+            exit 1
+          fi
+          mv "$MPP_FILE" patches.mpp
+
+          mkdir -p bin_temp
+          curl -fsSL https://github.com/j-hc/revanced-magisk-module/archive/refs/heads/main.tar.gz |
+            tar -xz -C bin_temp --strip-components=1
+
+          if [ -d "bin_temp/module/bin" ]; then
+            cp -r bin_temp/module/bin ./bin
+          else
+            echo "WARNING: bin directory not found."
+          fi
+
+      - name: Restore or Generate KeyStore
+        id: ks_setup_dev
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: bash .github/scripts/setup_keystore.sh
+
+      - name: Build & Package Dev Module
+        run: bash .github/scripts/build_module.sh dev
+
+      - name: Prepare Dev Release
+        run: |
+          mkdir -p release_files
+          test -f "youtube_dev_${YT_VERSION}.apk" || { echo "ERROR: Dev APK not found."; exit 1; }
+          test -f "youtube_dev_root_mount_${YT_VERSION}_Magisk.zip" || { echo "ERROR: Dev Magisk ZIP not found."; exit 1; }
+
+          mv "youtube_dev_${YT_VERSION}.apk" release_files/
+          mv "youtube_dev_root_mount_${YT_VERSION}_Magisk.zip" release_files/
+
+          DEV_TAG="${{ needs.check-updates.outputs.latest_dev_tag }}"
+          cat > release_files/changelog.txt <<EOF
+          ## 🚀 Morphe YouTube Dev Release
+
+          🧪 **YouTube Dev Version:** \`${YT_VERSION}\`
+          🧪 **Dev Patch Version:** [$DEV_TAG](https://github.com/MorpheApp/morphe-patches/releases/tag/$DEV_TAG)
+
+          ---
+
+          📦 **Yêu cầu MicroG (dành cho bản APK Non-Root):** [MicroG-RE Releases](https://github.com/MorpheApp/MicroG-RE/releases)
+          EOF
+
+          echo "RELEASE_TAG=dev-${YT_VERSION}-$(date +'%Y%m%d-%H%M%S')-${RANDOM}" >> "$GITHUB_ENV"
+
+      - name: Create Dev Release
+        uses: softprops/action-gh-release@v2.2.1
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: "YouTube Dev v${{ env.YT_VERSION }}"
+          body_path: release_files/changelog.txt
+          files: |
+            release_files/*.apk
+            release_files/*.zip
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      # ─── CẬP NHẬT VÀO THƯ MỤC update/ (DEV) ───
+      - name: Update update_dev.json & changelog_dev.md for Dev
+        run: |
+          mkdir -p update
+          VERSION_CODE=$(date +'%Y%m%d')
+
+          cat <<EOF > update/update_dev.json
+          {
+            "version": "${YT_VERSION}-dev",
+            "versionCode": ${VERSION_CODE},
+            "zipUrl": "https://github.com/tongduychuong/yt_patch_nonroot_root/releases/download/${RELEASE_TAG}/youtube_dev_root_mount_${YT_VERSION}_Magisk.zip",
+            "changelog": "https://raw.githubusercontent.com/tongduychuong/yt_patch_nonroot_root/main/update/changelog_dev.md"
+          }
+          EOF
+
+          cat <<EOF > update/changelog_dev.md
+          ## 🧪 Morphe YouTube Dev Release v${YT_VERSION}
+
+          🧪 **YouTube Dev Version:** \`${YT_VERSION}\`
+          🧪 **Dev Patch:** \`${{ needs.check-updates.outputs.latest_dev_tag }}\`
+          📅 **Build Date:** $(date +'%Y-%m-%d %H:%M:%S')
+
+          ---
+          - Bản thử nghiệm các tính năng mới từ nhánh phát triển.
+          EOF
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add update/update_dev.json update/changelog_dev.md
+          git commit -m "chore(dev): update update_dev.json and changelog_dev for v${YT_VERSION}" || echo "No changes to commit"
+          git push
+
+      - name: Send Telegram Notification (Dev)
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_TO: ${{ secrets.TELEGRAM_CHAT_ID }}
+        if: ${{ env.TELEGRAM_TOKEN != '' && env.TELEGRAM_TO != '' }}
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          format: markdown
+          message: |
+            🎉 *YouTube Dev Morphe Build Thành Công!*
+
+            🧪 *Phiên bản YT Dev:* `${{ env.YT_VERSION }}`
+            🏷 *Release Tag:* `${{ env.RELEASE_TAG }}`
+            🧪 *Dev Patch:* `${{ needs.check-updates.outputs.latest_dev_tag }}`
+
+            🔗 [Xem Release & Tải File](https://github.com/${{ github.repository }}/releases/tag/${{ env.RELEASE_TAG }})
+
+  cleanup-releases:
+    name: Cleanup Old Releases and Tags
+    needs: [build-stable, build-dev]
+    if: ${{ always() && (needs.build-stable.result == 'success' || needs.build-dev.result == 'success') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Cleanup old releases and tags
+        env:
+          GH_TOKEN: ${{ secrets.CUSTOM_PAT || github.token }}
+        run: |
+          set -euo pipefail
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          AUTH=(-H "Accept: application/vnd.github+json" -H "Authorization: Bearer ${GH_TOKEN}" -H "X-GitHub-Api-Version: 2022-11-28")
+
+          curl -fsSL "${AUTH[@]}" "$API/releases?per_page=100" |
+            jq -r 'sort_by(.published_at // .created_at) | reverse | .[10:][] | "\(.id)|\(.tag_name)"' |
+            while IFS='|' read -r id tag; do
+              [ -z "$id" ] && continue
+              echo "Deleting release: $tag"
+              curl -fsSL -X DELETE "${AUTH[@]}" "$API/releases/$id"
+              curl -s -X DELETE "${AUTH[@]}" "$API/git/refs/tags/$tag" >/dev/null || true
+            done
+
+  cleanup-workflows:
+    name: Cleanup Old Workflow Runs
+    needs: [cleanup-releases]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      - name: Delete excess workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          echo "Fetching workflow runs..."
+          run_ids=$(gh run list --limit 100 --json databaseId -q '.[10:][].databaseId')
+          for id in $run_ids; do
+            echo "Deleting run ID: $id"
+            gh run delete "$id" || true
+          done
+          echo "Cleanup completed!"
