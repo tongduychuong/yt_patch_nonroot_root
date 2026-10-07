@@ -9,11 +9,13 @@ if [ "$BUILD_MODE" == "dev" ]; then
   MODULE_NAME="YouTube Morphe Dev (Mount Root)"
   APK_OUT="youtube_dev_${YT_VERSION}.apk"
   ZIP_OUT="youtube_dev_root_mount_${YT_VERSION}_Magisk.zip"
+  UPDATE_JSON_PATH="https://raw.githubusercontent.com/tongduychuong/yt_patch_nonroot_root/main/update/update_dev.json"
 else
   MODULE_ID="youtube-morphe-mount-root"
   MODULE_NAME="YouTube Morphe (Mount Root)"
   APK_OUT="youtube_${YT_VERSION}.apk"
   ZIP_OUT="youtube_root_mount_${YT_VERSION}_Magisk.zip"
+  UPDATE_JSON_PATH="https://raw.githubusercontent.com/tongduychuong/yt_patch_nonroot_root/main/update/update.json"
 fi
 
 # ==========================================
@@ -66,13 +68,16 @@ if [ -d "bin" ]; then
   cp -r bin "$BASE_TEMPLATE/"
 fi
 
+VERSION_CODE_NUM=$(date +%Y%m%d)
+
 cat << EOF > "$BASE_TEMPLATE/module.prop"
 id=${MODULE_ID}
 name=${MODULE_NAME}
 version=${YT_VERSION} (patches ${PATCHES_VER})
-versionCode=$(date +%Y%m%d)
+versionCode=${VERSION_CODE_NUM}
 author=TDC Builder
 description=${MODULE_NAME} Module with Stock APK.
+updateJson=${UPDATE_JSON_PATH}
 EOF
 
 cat << 'EOF' > "$BASE_TEMPLATE/customize.sh"
@@ -98,7 +103,7 @@ fi
 
 PKG_NAME="com.google.android.youtube"
 
-# Cài đặt đè trực tiếp stock YouTube mới (bảo toàn toàn bộ settings và dữ liệu cũ)
+# Cài đặt đè trực tiếp stock YouTube mới (giữ nguyên settings)
 if [ -f "$MODPATH/stock/base.apk" ]; then
   ui_print "- Đang cập nhật đè stock YouTube (giữ nguyên settings)..."
   pm install -r -d "$MODPATH/stock/base.apk" >/dev/null 2>&1
