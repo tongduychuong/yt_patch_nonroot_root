@@ -97,7 +97,7 @@ jobs:
           mv "$JAR_FILE" morphe-cli.jar
 
           PATCH_TAG="${{ needs.check-updates.outputs.latest_stable_tag }}"
-          if [ -z "$PATCH_TAG" ] || [ "$PATCH_TAG" = "null" ]; then
+          if [ -z "$PATCH_TAG" ] \vert{}\vert{} [ "$PATCH_TAG" = "null" ]; then
             echo "ERROR: Stable patch tag is empty."
             exit 1
           fi
@@ -155,7 +155,7 @@ jobs:
           📦 **Yêu cầu MicroG (dành cho bản APK Non-Root):** [MicroG-RE Releases](https://github.com/MorpheApp/MicroG-RE/releases)
           EOF
 
-          echo "RELEASE_TAG=stable-${YT_VERSION}-$(date +'%Y%m%d-%H%M%S')" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=stable-${YT_VERSION}-$(date +'\%Y\%m\%d-\%H\%M\%S')" >> "$GITHUB_ENV"
 
       - name: Create Stable Release
         uses: softprops/action-gh-release@v2.2.1
@@ -168,6 +168,40 @@ jobs:
             release_files/*.zip
         env:
           GITHUB_TOKEN: ${{ github.token }}
+
+      # ─── CẬP NHẬT VÀO THƯ MỤC update/ ───
+      - name: Update update.json & changelog.md for Stable
+        run: |
+          mkdir -p update
+          VERSION_CODE=$(date +'%Y%m%d')
+
+          # Tạo file update.json với đúng định dạng zipUrl theo Release Tag
+          cat <<EOF > update/update.json
+          {
+            "version": "${YT_VERSION}",
+            "versionCode": ${VERSION_CODE},
+            "zipUrl": "https://github.com/tongduychuong/yt_patch_nonroot_root/releases/download/${RELEASE_TAG}/youtube_root_mount_${YT_VERSION}_Magisk.zip",
+            "changelog": "https://raw.githubusercontent.com/tongduychuong/yt_patch_nonroot_root/main/update/changelog.md"
+          }
+          EOF
+
+          # Tạo file changelog.md trong thư mục update
+          cat <<EOF > update/changelog.md
+          ## 🚀 Morphe YouTube Stable Release v${YT_VERSION}
+
+          📌 **YouTube Version:** \`${YT_VERSION}\`
+          📌 **Stable Patch:** \`${{ needs.check-updates.outputs.latest_stable_tag }}\`
+          📅 **Build Date:** $(date +'%Y-%m-%d %H:%M:%S')
+
+          ---
+          - Tự động cập nhật module Magisk Root Mount qua Morphe CLI.
+          EOF
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add update/update.json update/changelog.md
+          git commit -m "chore(stable): update update.json and changelog for v${YT_VERSION}" || echo "No changes to commit"
+          git push
 
       - name: Send Telegram Notification (Stable)
         env:
@@ -242,7 +276,7 @@ jobs:
           mv "$JAR_FILE" morphe-cli.jar
 
           PATCH_TAG="${{ needs.check-updates.outputs.latest_dev_tag }}"
-          if [ -z "$PATCH_TAG" ] || [ "$PATCH_TAG" = "null" ]; then
+          if [ -z "$PATCH_TAG" ] \vert{}\vert{} [ "$PATCH_TAG" = "null" ]; then
             echo "ERROR: Dev patch tag is empty."
             exit 1
           fi
@@ -300,7 +334,7 @@ jobs:
           📦 **Yêu cầu MicroG (dành cho bản APK Non-Root):** [MicroG-RE Releases](https://github.com/MorpheApp/MicroG-RE/releases)
           EOF
 
-          echo "RELEASE_TAG=dev-${YT_VERSION}-$(date +'%Y%m%d-%H%M%S')" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=dev-${YT_VERSION}-$(date +'\%Y\%m\%d-\%H\%M\%S')" >> "$GITHUB_ENV"
 
       - name: Create Dev Release
         uses: softprops/action-gh-release@v2.2.1
@@ -313,6 +347,40 @@ jobs:
             release_files/*.zip
         env:
           GITHUB_TOKEN: ${{ github.token }}
+
+      # ─── CẬP NHẬT VÀO THƯ MỤC update/ (DEV) ───
+      - name: Update update_dev.json & changelog_dev.md for Dev
+        run: |
+          mkdir -p update
+          VERSION_CODE=$(date +'%Y%m%d')
+
+          # Tạo file update_dev.json với đúng định dạng zipUrl theo Release Tag
+          cat <<EOF > update/update_dev.json
+          {
+            "version": "${YT_VERSION}-dev",
+            "versionCode": ${VERSION_CODE},
+            "zipUrl": "https://github.com/tongduychuong/yt_patch_nonroot_root/releases/download/${RELEASE_TAG}/youtube_dev_root_mount_${YT_VERSION}_Magisk.zip",
+            "changelog": "https://raw.githubusercontent.com/tongduychuong/yt_patch_nonroot_root/main/update/changelog_dev.md"
+          }
+          EOF
+
+          # Tạo file changelog_dev.md trong thư mục update
+          cat <<EOF > update/changelog_dev.md
+          ## 🧪 Morphe YouTube Dev Release v${YT_VERSION}
+
+          🧪 **YouTube Dev Version:** \`${YT_VERSION}\`
+          🧪 **Dev Patch:** \`${{ needs.check-updates.outputs.latest_dev_tag }}\`
+          📅 **Build Date:** $(date +'%Y-%m-%d %H:%M:%S')
+
+          ---
+          - Bản thử nghiệm các tính năng mới từ nhánh phát triển.
+          EOF
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add update/update_dev.json update/changelog_dev.md
+          git commit -m "chore(dev): update update_dev.json and changelog_dev for v${YT_VERSION}" || echo "No changes to commit"
+          git push
 
       - name: Send Telegram Notification (Dev)
         env:
