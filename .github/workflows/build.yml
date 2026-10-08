@@ -173,7 +173,7 @@ jobs:
       - name: Update update.json & changelog.md for Stable
         run: |
           mkdir -p update
-          VERSION_CODE=$(date +'%Y%m%d')
+          VERSION_CODE=$(date +'%Y%m%d%H%M%S')
 
           cat <<EOF > update/update.json
           {
@@ -353,7 +353,7 @@ jobs:
       - name: Update update_dev.json & changelog_dev.md for Dev
         run: |
           mkdir -p update
-          VERSION_CODE=$(date +'%Y%m%d')
+          VERSION_CODE=$(date +'%Y%m%d%H%M%S')
 
           cat <<EOF > update/update_dev.json
           {
