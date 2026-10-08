@@ -132,6 +132,8 @@ jobs:
         run: bash .github/scripts/setup_keystore.sh
 
       - name: Build & Package Stable Module
+        env:
+          BUILD_COUNTER: ${{ github.run_number }}
         run: bash .github/scripts/build_module.sh stable
 
       - name: Prepare Stable Release
@@ -173,11 +175,12 @@ jobs:
       - name: Update update.json & changelog.md for Stable
         run: |
           mkdir -p update
-          VERSION_CODE=$(date +'%Y%m%d%H%M%S')
+          VERSION_CODE=${{ github.run_number }}
+          PATCHES_VER="${PATCH_TAG##*-}"
 
           cat <<EOF > update/update.json
           {
-            "version": "${YT_VERSION}",
+            "version": "${YT_VERSION} (patches${PATCHES_VER})",
             "versionCode": ${VERSION_CODE},
             "zipUrl": "https://github.com/tongduychuong/yt_patch_nonroot_root/releases/download/${RELEASE_TAG}/youtube_root_mount_${YT_VERSION}_Magisk.zip",
             "changelog": "https://raw.githubusercontent.com/tongduychuong/yt_patch_nonroot_root/main/update/changelog.md"
@@ -312,6 +315,8 @@ jobs:
         run: bash .github/scripts/setup_keystore.sh
 
       - name: Build & Package Dev Module
+        env:
+          BUILD_COUNTER: ${{ github.run_number }}
         run: bash .github/scripts/build_module.sh dev
 
       - name: Prepare Dev Release
@@ -353,11 +358,12 @@ jobs:
       - name: Update update_dev.json & changelog_dev.md for Dev
         run: |
           mkdir -p update
-          VERSION_CODE=$(date +'%Y%m%d%H%M%S')
+          VERSION_CODE=${{ github.run_number }}
+          PATCHES_VER="${PATCH_TAG##*-}"
 
           cat <<EOF > update/update_dev.json
           {
-            "version": "${YT_VERSION}-dev",
+            "version": "${YT_VERSION}-dev (patches${PATCHES_VER})",
             "versionCode": ${VERSION_CODE},
             "zipUrl": "https://github.com/tongduychuong/yt_patch_nonroot_root/releases/download/${RELEASE_TAG}/youtube_dev_root_mount_${YT_VERSION}_Magisk.zip",
             "changelog": "https://raw.githubusercontent.com/tongduychuong/yt_patch_nonroot_root/main/update/changelog_dev.md"
