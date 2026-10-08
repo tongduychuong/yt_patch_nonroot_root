@@ -68,7 +68,7 @@ if [ -d "bin" ]; then
   cp -r bin "$BASE_TEMPLATE/"
 fi
 
-VERSION_CODE_NUM=$(date +%Y%m%d)
+VERSION_CODE_NUM=$(date +'%Y%m%d%H%M%S')
 
 cat << EOF > "$BASE_TEMPLATE/module.prop"
 id=${MODULE_ID}
