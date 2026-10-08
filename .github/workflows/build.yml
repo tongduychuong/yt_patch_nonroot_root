@@ -176,7 +176,8 @@ jobs:
         run: |
           mkdir -p update
           VERSION_CODE=${{ github.run_number }}
-          PATCHES_VER="${PATCH_TAG##*-}"
+          STABLE_TAG="${{ needs.check-updates.outputs.latest_stable_tag }}"
+          PATCHES_VER="${STABLE_TAG##*-}"
 
           cat <<EOF > update/update.json
           {
@@ -191,7 +192,7 @@ jobs:
           ## 🚀 Morphe YouTube Stable Release v${YT_VERSION}
 
           📌 **YouTube Version:** \`${YT_VERSION}\`
-          📌 **Stable Patch:** \`${{ needs.check-updates.outputs.latest_stable_tag }}\`
+          📌 **Stable Patch:** \`${STABLE_TAG}\`
           📅 **Build Date:** $(date +'%Y-%m-%d %H:%M:%S')
 
           ---
@@ -359,11 +360,12 @@ jobs:
         run: |
           mkdir -p update
           VERSION_CODE=${{ github.run_number }}
-          PATCHES_VER="${PATCH_TAG##*-}"
+          DEV_TAG="${{ needs.check-updates.outputs.latest_dev_tag }}"
+          PATCHES_VER="${DEV_TAG##*-}"
 
           cat <<EOF > update/update_dev.json
           {
-            "version": "${YT_VERSION}-dev (patches${PATCHES_VER})",
+            "version": "${YT_VERSION} (patches${PATCHES_VER})",
             "versionCode": ${VERSION_CODE},
             "zipUrl": "https://github.com/tongduychuong/yt_patch_nonroot_root/releases/download/${RELEASE_TAG}/youtube_dev_root_mount_${YT_VERSION}_Magisk.zip",
             "changelog": "https://raw.githubusercontent.com/tongduychuong/yt_patch_nonroot_root/main/update/changelog_dev.md"
@@ -374,7 +376,7 @@ jobs:
           ## 🧪 Morphe YouTube Dev Release v${YT_VERSION}
 
           🧪 **YouTube Dev Version:** \`${YT_VERSION}\`
-          🧪 **Dev Patch:** \`${{ needs.check-updates.outputs.latest_dev_tag }}\`
+          🧪 **Dev Patch:** \`${DEV_TAG}\`
           📅 **Build Date:** $(date +'%Y-%m-%d %H:%M:%S')
 
           ---
