@@ -197,9 +197,12 @@ jobs:
 
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
           git add update/update.json update/changelog.md
           git commit -m "chore(stable): update update.json and changelog for v${YT_VERSION}" || echo "No changes to commit"
-          git push
+          
+          git pull origin main --rebase || echo "Rebase skipped or no remote changes"
+          git push origin main
 
       - name: Send Telegram Notification (Stable)
         env:
@@ -374,9 +377,12 @@ jobs:
 
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
           git add update/update_dev.json update/changelog_dev.md
           git commit -m "chore(dev): update update_dev.json and changelog_dev for v${YT_VERSION}" || echo "No changes to commit"
-          git push
+          
+          git pull origin main --rebase || echo "Rebase skipped or no remote changes"
+          git push origin main
 
       - name: Send Telegram Notification (Dev)
         env:
