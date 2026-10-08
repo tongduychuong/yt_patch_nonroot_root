@@ -68,7 +68,8 @@ if [ -d "bin" ]; then
   cp -r bin "$BASE_TEMPLATE/"
 fi
 
-VERSION_CODE_NUM=$(date +%Y%m%d%H%M%S)
+# Sử dụng BUILD_COUNTER truyền từ GitHub Actions (mặc định là 1 nếu chạy thủ công)
+VERSION_CODE_NUM=${BUILD_COUNTER:-1}
 
 cat << EOF > "$BASE_TEMPLATE/module.prop"
 id=${MODULE_ID}
