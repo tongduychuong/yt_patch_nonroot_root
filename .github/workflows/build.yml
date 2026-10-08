@@ -134,6 +134,7 @@ jobs:
       - name: Build & Package Stable Module
         env:
           BUILD_COUNTER: ${{ github.run_number }}
+          PATCH_TAG: ${{ needs.check-updates.outputs.latest_stable_tag }}
         run: bash .github/scripts/build_module.sh stable
 
       - name: Prepare Stable Release
@@ -318,6 +319,7 @@ jobs:
       - name: Build & Package Dev Module
         env:
           BUILD_COUNTER: ${{ github.run_number }}
+          PATCH_TAG: ${{ needs.check-updates.outputs.latest_dev_tag }}
         run: bash .github/scripts/build_module.sh dev
 
       - name: Prepare Dev Release
