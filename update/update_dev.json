@@ -1,6 +1,6 @@
 {
-  "version": "21.40.161 (patchesdev.5)",
-  "versionCode": 92,
-  "zipUrl": "https://github.com/tongduychuong/yt_patch_nonroot_root/releases/download/dev-21.40.161-20261009-013533-1234/youtube_dev_root_mount_21.40.161_Magisk.zip",
+  "version": "21.40.161 (patchesv1.47.0-dev.5)",
+  "versionCode": 93,
+  "zipUrl": "https://github.com/tongduychuong/yt_patch_nonroot_root/releases/download/dev-21.40.161-20261009-072407-4583/youtube_dev_root_mount_21.40.161_Magisk.zip",
   "changelog": "https://raw.githubusercontent.com/tongduychuong/yt_patch_nonroot_root/main/update/changelog_dev.md"
 }
