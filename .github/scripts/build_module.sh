@@ -2,7 +2,7 @@
 set -e
 
 BUILD_MODE=$1
-PATCHES_VER="${PATCH_TAG##*-}"
+PATCHES_VER="${PATCH_TAG}"
 
 if [ "$BUILD_MODE" == "dev" ]; then
   MODULE_ID="youtube-morphe-dev-mount-root"
@@ -74,7 +74,7 @@ VERSION_CODE_NUM=${BUILD_COUNTER:-1}
 cat << EOF > "$BASE_TEMPLATE/module.prop"
 id=${MODULE_ID}
 name=${MODULE_NAME}
-version=${YT_VERSION} (patches${PATCHES_VER})
+version=${YT_VERSION} (patches ${PATCHES_VER})
 versionCode=${VERSION_CODE_NUM}
 author=TDC Builder
 description=${MODULE_NAME} Module with Stock APK.
