@@ -178,7 +178,7 @@ jobs:
           mkdir -p update
           VERSION_CODE=${{ github.run_number }}
           STABLE_TAG="${{ needs.check-updates.outputs.latest_stable_tag }}"
-          PATCHES_VER="${STABLE_TAG##*-}"
+          PATCHES_VER="${STABLE_TAG}"
 
           cat <<EOF > update/update.json
           {
@@ -363,7 +363,7 @@ jobs:
           mkdir -p update
           VERSION_CODE=${{ github.run_number }}
           DEV_TAG="${{ needs.check-updates.outputs.latest_dev_tag }}"
-          PATCHES_VER="${DEV_TAG##*-}"
+          PATCHES_VER="${DEV_TAG}"
 
           cat <<EOF > update/update_dev.json
           {
