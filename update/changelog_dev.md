@@ -1,8 +1,8 @@
-## 🧪 Morphe YouTube Dev Release v21.40.161
+## 🧪 Morphe YouTube Dev Release v21.41.525
 
-🧪 **YouTube Dev Version:** `21.40.161`
-🧪 **Dev Patch:** `v1.47.0-dev.25`
-📅 **Build Date:** 2026-10-12 00:51:41
+🧪 **YouTube Dev Version:** `21.41.525`
+🧪 **Dev Patch:** `v1.48.0-dev.4`
+📅 **Build Date:** 2026-10-13 02:48:19
 
 ---
 - Bản thử nghiệm các tính năng mới từ nhánh phát triển.
