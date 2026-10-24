@@ -422,7 +422,7 @@ jobs:
       contents: write
 
     steps:
-      - name: Cleanup old releases and tags
+      - name: Cleanup old releases and tags (Keep at least 1 Stable & 1 Dev)
         env:
           GH_TOKEN: ${{ secrets.CUSTOM_PAT || github.token }}
         run: |
@@ -430,14 +430,43 @@ jobs:
           API="https://api.github.com/repos/${GITHUB_REPOSITORY}"
           AUTH=(-H "Accept: application/vnd.github+json" -H "Authorization: Bearer ${GH_TOKEN}" -H "X-GitHub-Api-Version: 2022-11-28")
 
-          curl -fsSL "${AUTH[@]}" "$API/releases?per_page=100" |
-            jq -r 'sort_by(.published_at // .created_at) | reverse | .[10:][] | "\(.id)|\(.tag_name)"' |
-            while IFS='|' read -r id tag; do
+          # Số lượng release muốn giữ lại cho từng loại (tối thiểu là 1)
+          KEEP_STABLE=1
+          KEEP_DEV=1
+
+          # Lấy danh sách toàn bộ releases
+          RELEASES=$(curl -fsSL "${AUTH[@]}" "$API/releases?per_page=100")
+
+          # Lọc danh sách release Stable cần xóa (bỏ qua KEEP_STABLE bản mới nhất)
+          STABLE_TO_DELETE=$(echo "$RELEASES" | jq -r --argjson keep "$KEEP_STABLE" '
+            map(select(.tag_name | startswith("stable-"))) 
+            | sort_by(.published_at // .created_at) | reverse 
+            | .[$keep:][] | "\(.id)|\(.tag_name)"')
+
+          # Lọc danh sách release Dev cần xóa (bỏ qua KEEP_DEV bản mới nhất)
+          DEV_TO_DELETE=$(echo "$RELEASES" | jq -r --argjson keep "$KEEP_DEV" '
+            map(select(.tag_name | startswith("dev-"))) 
+            | sort_by(.published_at // .created_at) | reverse 
+            | .[$keep:][] | "\(.id)|\(.tag_name)"')
+
+          # Các release khác không thuộc quy tắc định danh chuẩn (nếu có)
+          OTHER_TO_DELETE=$(echo "$RELEASES" | jq -r '
+            map(select((.tag_name | startswith("stable-") | not) and (.tag_name | startswith("dev-") | not)))
+            | .[] | "\(.id)|\(.tag_name)"')
+
+          # Gộp danh sách cần xóa
+          ALL_TO_DELETE=$(printf "%s\n%s\n%s" "$STABLE_TO_DELETE" "$DEV_TO_DELETE" "$OTHER_TO_DELETE" | sed '/^$/d')
+
+          if [ -z "$ALL_TO_DELETE" ]; then
+            echo "Không có release/tag cũ nào cần xóa."
+          else
+            echo "$ALL_TO_DELETE" | while IFS='|' read -r id tag; do
               [ -z "$id" ] && continue
-              echo "Deleting release: $tag"
+              echo "🗑️ Đang xóa release: $tag (ID: $id)..."
               curl -fsSL -X DELETE "${AUTH[@]}" "$API/releases/$id"
               curl -s -X DELETE "${AUTH[@]}" "$API/git/refs/tags/$tag" >/dev/null || true
             done
+          fi
 
   cleanup-workflows:
     name: Cleanup Old Workflow Runs
