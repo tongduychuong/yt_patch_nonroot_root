@@ -1,6 +1,6 @@
 {
-  "version": "21.20.405 (patchesv1.48.0)",
-  "versionCode": 109,
-  "zipUrl": "https://github.com/tongduychuong/yt_patch_nonroot_root/releases/download/stable-21.20.405-20261023-042516-9832/youtube_root_mount_21.20.405_Magisk.zip",
+  "version": "21.30.216 (patchesv2.0.0)",
+  "versionCode": 117,
+  "zipUrl": "https://github.com/tongduychuong/yt_patch_nonroot_root/releases/download/stable-21.30.216-20261031-011115-32237/youtube_root_mount_21.30.216_Magisk.zip",
   "changelog": "https://raw.githubusercontent.com/tongduychuong/yt_patch_nonroot_root/main/update/changelog.md"
 }
